@@ -28,12 +28,14 @@ export interface Board {
   createdAt: any;
   retroData?: RetroData;
   reflectionData?: ReflectionData;
+  burndownData?: BurndownData; 
+  sprintPlanningData?: SprintPlanningData;
 }
 
 
 export interface ProgressLogEntry {
   desc: string;
-  type: 'created' | 'status-change' | 'assignment-change' | 'description-change' | 
+  type: 'created' | 'status-change' | 'assignment-change' | 'description-change' | 'points-change' |
         'dueDate-change' | 'tags-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
         'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed';
   to?: string;
@@ -111,25 +113,6 @@ export interface RootState {
 
 // types/analytics.types.ts
 
-// Retrospective types
-export interface RetroItem {
-  id: number;
-  type: 'good' | 'improve' | 'action';
-  content: string;
-  author: string;
-  createdAt: string;
-  votes: number;
-  assignedTo?: string;
-  dueDate?: string;
-}
-
-export interface RetroData {
-  items: RetroItem[];
-  lastUpdated: string;
-  sprint: string;
-}
-
-// Reflection types
 export interface ReflectionItem {
   id: number;
   content: string;
@@ -138,14 +121,8 @@ export interface ReflectionItem {
   author: string;
   createdAt: string;
   tags: string[];
-}
-
-export interface ReflectionData {
-  personalReflections: ReflectionItem[];
-  teamInsights: ReflectionItem[];
-  lessonsLearned: ReflectionItem[];
-  futureGoals: ReflectionItem[];
-  lastUpdated: string | null;
+  reviewType: 'self' | 'manager';
+  rating?: number; // 1-5 star rating
 }
 
 // Extended board types with analytics data
@@ -213,12 +190,6 @@ export interface NewRetroItemForm {
   dueDate: string;
 }
 
-export interface NewReflectionForm {
-  content: string;
-  category: string;
-  priority: 'Low' | 'Medium' | 'High';
-}
-
 // UI state types
 export interface ShowAddForm {
   good: boolean;
@@ -229,47 +200,107 @@ export interface ShowAddForm {
 export type TabKey = 'personal' | 'team' | 'lessons' | 'goals';
 export type TimeRange = '7d' | '30d' | '90d';
 
+export interface ReflectionData {
+  personalGrowth: ReflectionItem[];
+  teamInsights: ReflectionItem[];
+  lessonsLearned: ReflectionItem[];
+  futureGoals: ReflectionItem[];
+  lastUpdated: string | null;
+}
+
+export interface NewReflectionForm {
+  content: string;
+  category: string;
+  priority: 'Low' | 'Medium' | 'High';
+  reviewType: 'self' | 'manager';
+  rating: number;
+}
+
 export interface TabConfig {
   key: TabKey;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   color: string;
+  description: string;
 }
 
-// types/index.ts - Add these interfaces to your existing types file
+export interface ContributorMetrics {
+  name: string;
+  taskCount: number;
+  pointsCompleted: number;
+  averageCycleTime: number;
+  efficiency: number;
+}
 
-// Add these new interfaces for analytics data
+export interface VelocityData {
+  period: string;
+  completed: number;
+  planned: number;
+  velocity: number;
+}
+
+export interface SprintConfig {
+  startDate: string;
+  endDate: string;
+  totalPoints: number;
+  workingDays: number[];
+  sprintGoal: string;
+  velocityTarget: number;
+}
+
+export interface BurndownEntry {
+  date: string;
+  remainingPoints: number;
+  completedPoints: number;
+  note?: string;
+  isManual: boolean;
+  updatedBy?: string;
+}
+
+export interface BurndownData {
+  sprintConfig?: SprintConfig;
+  entries: BurndownEntry[];
+  lastUpdated: string;
+}
+
+export interface NewItemForm {
+  type: 'went-well' | 'improve' | 'action';
+  content: string;
+  assignedTo: string;
+  dueDate: string;
+  priority: 'Low' | 'Medium' | 'High';
+}
+
 export interface RetroItem {
   id: number;
-  type: 'good' | 'improve' | 'action';
+  type: 'went-well' | 'improve' | 'action';
   content: string;
   author: string;
   createdAt: string;
   votes: number;
   assignedTo?: string;
   dueDate?: string;
+  priority: 'Low' | 'Medium' | 'High';
+  tags: string[];
 }
 
 export interface RetroData {
   items: RetroItem[];
   lastUpdated: string;
-  sprint: string;
+  sprintName: string;
+  facilitator: string;
 }
 
-export interface ReflectionItem {
-  id: number;
-  content: string;
-  category: string;
-  priority: 'Low' | 'Medium' | 'High';
-  author: string;
-  createdAt: string;
-  tags: string[];
-}
-
-export interface ReflectionData {
-  personalReflections: ReflectionItem[];
-  teamInsights: ReflectionItem[];
-  lessonsLearned: ReflectionItem[];
-  futureGoals: ReflectionItem[];
-  lastUpdated: string | null;
+export interface SprintPlanningData {
+  goals: string[];
+  features: string[];
+  totalStoryPoints: number;
+  estimatedWorkingHours: number;
+  sprintDuration: number;
+  teamCapacity: number;
+  sprintStartDate: string;
+  sprintEndDate: string;
+  sprintObjective: string;
+  riskAssessment: string;
+  lastUpdated: string;
 }

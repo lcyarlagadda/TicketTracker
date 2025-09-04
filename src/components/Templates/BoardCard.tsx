@@ -119,52 +119,6 @@ const BoardCard: React.FC<BoardCardProps> = ({ board }) => {
             </div>
           )}
 
-            <div className="mt-4 flex flex-col gap-2">
-            <div className="flex gap-2">
-              <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/board/${board.id}/analytics`);
-              }}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm"
-              >
-              <BarChart3 size={14} />
-              Analytics
-              </button>
-              <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/board/${board.id}/retro`);
-              }}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors text-sm"
-              >
-              <MessageSquare size={14} />
-              Retro
-              </button>
-            </div>
-            <div>
-              <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/board/${board.id}/reflection`);
-              }}
-              className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors text-sm"
-              >
-              <BookOpen size={14} />
-              Reflect
-              </button>
-            </div>
-            </div>
-
-            <div className="absolute left-0 right-0 bottom-0 w-full">
-              <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50/90 backdrop-blur-sm rounded-b-2xl px-3 py-2">
-              <span className="flex items-center gap-1">
-                <Calendar size={12} />
-                Click to view
-              </span>
-              <span className="font-medium">→</span>
-              </div>
-            </div>
         </div>
       </div>
 

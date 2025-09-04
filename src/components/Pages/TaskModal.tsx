@@ -1,4 +1,4 @@
-// components/Modals/TaskModal.tsx - Enhanced version with editable title and priority
+// components/Modals/TaskModal.tsx - Enhanced version with editable title, priority, and points
 import React, { useEffect, useState } from "react";
 import {
   X,
@@ -22,6 +22,7 @@ import {
   Download,
   SquarePen,
   Check,
+  Hash,
 } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
@@ -56,6 +57,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
   // Form state
   const [title, setTitle] = useState(task.title || "");
   const [priority, setPriority] = useState(task.priority || "Medium");
+  const [points, setPoints] = useState(task.points || 3);
   const [description, setDescription] = useState(task.description || "");
   const [assignedTo, setAssignedTo] = useState(task.assignedTo || "");
   const [dueDate, setDueDate] = useState(task.dueDate || "");
@@ -68,9 +70,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
   const [confirmMessage, setConfirmMessage] = useState("");
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
 
-  // Edit state for title and priority
+  // Edit state for title, priority, and points
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingPriority, setEditingPriority] = useState(false);
+  const [editingPoints, setEditingPoints] = useState(false);
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>(task.comments || []);
@@ -146,6 +149,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
     return null;
   };
 
+  // Points validation function
+  const validatePoints = (pointsValue: number): string | null => {
+    if (pointsValue < 1 || pointsValue > 100) {
+      return "Story points must be between 1 and 100.";
+    }
+    return null;
+  };
+
   // Handle title save
   const handleSaveTitle = () => {
     const validationError = validateTitle(title);
@@ -167,6 +178,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
     }
   };
 
+  // Handle points save
+  const handleSavePoints = () => {
+    const validationError = validatePoints(points);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+    setEditingPoints(false);
+    if (points !== task.points) {
+      setUnsavedChanges(true);
+    }
+  };
+
   // Handle title cancel
   const handleCancelTitle = () => {
     setTitle(task.title || "");
@@ -177,6 +201,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
   const handleCancelPriority = () => {
     setPriority(task.priority || "Medium");
     setEditingPriority(false);
+  };
+
+  // Handle points cancel
+  const handleCancelPoints = () => {
+    setPoints(task.points || 3);
+    setEditingPoints(false);
   };
 
   const validateSubtaskForm = (
@@ -284,7 +314,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
         tags: [],
         comments: [],
         files: [],
-        points: null,
+        points: 3, // Default points for subtasks
         progressLog: [
           {
             type: "created" as const,
@@ -669,6 +699,22 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
         });
       }
 
+      // Check for points changes
+      if (points !== task.points) {
+        const pointsError = validatePoints(points);
+        if (pointsError) {
+          setErrorMessage(pointsError);
+          return;
+        }
+        updates.points = points;
+        newLogEntries.push({
+          type: "points-change" as const,
+          desc: `Story points changed from ${task.points || 'not set'} to ${points}`,
+          timestamp: Timestamp.now(),
+          user: user.displayName || user.email,
+        });
+      }
+
       // Check for description changes
       if (description.trim() !== (task.description || "").trim()) {
         updates.description = description;
@@ -821,6 +867,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
     High: "from-red-400 to-red-600",
   };
 
+  // Story point options (Fibonacci sequence)
+  const storyPointOptions = ['1', '2', '3', '5', '8', '13', '21'];
+
   return (
     <div
       className={`fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-start pt-4 z-50 transition-all duration-300 ${
@@ -953,6 +1002,47 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
                 </div>
               )}
 
+              {/* Editable Story Points */}
+              {editingPoints ? (
+                <div className="flex items-center gap-2">
+                  <CustomDropdown
+                    options={storyPointOptions}
+                    selected={points.toString()}
+                    setSelected={(val) => setPoints(parseInt(val))}
+                    placeholder="Points"
+                    className="w-24"
+                  />
+                  <button
+                    onClick={handleSavePoints}
+                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
+                    title="Save points"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    onClick={handleCancelPoints}
+                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                    title="Cancel"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group">
+                  <div className="px-3 py-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-sm font-semibold shadow-lg flex items-center gap-1">
+                    <Hash size={14} />
+                    {points} {points === 1 ? 'Point' : 'Points'}
+                  </div>
+                  <button
+                    onClick={() => setEditingPoints(true)}
+                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
+                    title="Edit story points"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={closeModal}
                 className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all duration-200 hover:scale-110"
@@ -1010,7 +1100,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
 
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <div className="p-2 rounded-lg bg-purple-100">
+                <div className="p-2 rounded-lg bg-violet-100">
                   <Calendar size={18} className="text-purple-600" />
                 </div>
                 <h3 className="font-semibold text-slate-800">Due Date</h3>
@@ -1026,6 +1116,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
               />
             </div>
           </div>
+
+          {/* Rest of the content remains the same - Child Tasks, Tags, Files, Activity History, Comments sections */}
+          {/* ... (keeping the rest of the component exactly as it was) ... */}
 
           {/* Child Tasks */}
           <div className="mb-6">
@@ -1193,35 +1286,39 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
                             placeholder="Task title"
                             className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none transition-colors"
                           />
-                          <CustomDropdown
-                            options={["Low", "Medium", "High"]}
-                            selected={editChildTaskData.priority}
-                            setSelected={(val) =>
-                              setEditChildTaskData({
-                                ...editChildTaskData,
-                                priority: val as "Low" | "Medium" | "High",
-                              })
-                            }
-                            placeholder="Priority"
-                            className="w-full"
-                          />
+                          <div className="relative z-30">
+                            <CustomDropdown
+                              options={["Low", "Medium", "High"]}
+                              selected={editChildTaskData.priority}
+                              setSelected={(val) =>
+                                setEditChildTaskData({
+                                  ...editChildTaskData,
+                                  priority: val as "Low" | "Medium" | "High",
+                                })
+                              }
+                              placeholder="Priority"
+                              className="w-full"
+                            />
+                          </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <CustomDropdown
-                            options={[
-                              "Unassigned",
-                              ...collaborators.map((c: Collaborator) => c.name),
-                            ]}
-                            selected={editChildTaskData.assignedTo}
-                            setSelected={(val) =>
-                              setEditChildTaskData({
-                                ...editChildTaskData,
-                                assignedTo: val,
-                              })
-                            }
-                            placeholder="Assign to"
-                            className="w-full"
-                          />
+                          <div className="relative z-30">
+                            <CustomDropdown
+                              options={[
+                                "Unassigned",
+                                ...collaborators.map((c: Collaborator) => c.name),
+                              ]}
+                              selected={editChildTaskData.assignedTo}
+                              setSelected={(val) =>
+                                setEditChildTaskData({
+                                  ...editChildTaskData,
+                                  assignedTo: val,
+                                })
+                              }
+                              placeholder="Assign to"
+                              className="w-full"
+                            />
+                          </div>
                           <input
                             type="date"
                             value={editChildTaskData.dueDate}
@@ -1388,7 +1485,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
                                   new Date(childTask.dueDate) < new Date() &&
                                   childTask.status !== "done"
                                     ? "bg-red-100"
-                                    : "bg-purple-100"
+                                    : "bg-violet-100"
                                 }`}
                               >
                                 <Calendar

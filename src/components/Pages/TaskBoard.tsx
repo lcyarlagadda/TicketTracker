@@ -1,7 +1,7 @@
 // components/Pages/TaskBoard.tsx
 import React, { useEffect, useState, useMemo } from "react";
 import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd";
-import { Plus, Users, Minus, X, Edit, Trash2, Search, Filter, UserCheck, Tag, UserRound } from "lucide-react";
+import { Plus, Users, Minus, X, Edit, Trash2, Search, Filter, UserCheck, Tag, UserRound, BarChart3, MessageSquare, BookOpen, Target } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
 import { useTasksSync } from "../../hooks/useFirebaseSync";
 import {
@@ -15,12 +15,13 @@ import {
   createTask,
   setSelectedTask,
 } from "../../store/slices/taskSlice";
-import { Task, Collaborator } from "../../store/types/types";
+import { Task } from "../../store/types/types";
 import TaskCard from "../Templates/TaskCard";
 import TaskModal from "./TaskModal";
 import TaskStats from "../TaskStats";
 import CreateTaskForm from "../Forms/CreateTaskForm";
 import ErrorModal from "../Atoms/ErrorModal";
+import { useNavigate } from "react-router-dom";
 
 interface TaskBoardProps {
   boardId: string;
@@ -32,6 +33,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const { currentBoard, loading } = useAppSelector((state) => state.boards);
   const { selectedTask } = useAppSelector((state) => state.tasks);
   const tasks = useTasksSync(boardId); // Real-time sync
+  const navigate = useNavigate();
   
   // Get collaborators from currentBoard, ensuring we have the latest data
   const collaborators = currentBoard?.collaborators || [];
@@ -142,6 +144,44 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       })
     );
   };
+
+   const AnalyticsNavigation = () => (
+    <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 px-6 py-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-700">Board Tools</h3>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate(`/board/${boardId}/planning`)}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+          >
+            <Target size={16} />
+            <span className="hidden sm:inline">Planning</span>
+          </button>
+          <button
+            onClick={() => navigate(`/board/${boardId}/analytics`)}
+            className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+          >
+            <BarChart3 size={16} />
+            <span className="hidden sm:inline">Analytics</span>
+          </button>
+          <button
+            onClick={() => navigate(`/board/${boardId}/retro`)}
+            className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+          >
+            <MessageSquare size={16} />
+            <span className="hidden sm:inline">Retrospective</span>
+          </button>
+          <button
+            onClick={() => navigate(`/board/${boardId}/reflection`)}
+            className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+          >
+            <BookOpen size={16} />
+            <span className="hidden sm:inline">Reflection</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   const handleAddColumn = async () => {
     const columnName = newColumnName.trim();
@@ -521,9 +561,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                           </div>
                           <div>
                             <p className="font-semibold text-slate-800 text-sm">
-                              {c.name}
+                              {c.name.length > 15
+                              ? `${c.name.slice(0, 10)}...`
+                              : c.name}
                             </p>
-                            <p className="text-xs text-slate-500">{c.email}</p>
+                            <p className="text-xs text-slate-500">
+                              {c.email.length > 15 ? `${c.email.slice(0, 10)}...` : c.email}
+                            </p>
                           </div>
                         </div>
                         <button
@@ -596,7 +640,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                 Add Task
               </button>
             </div>
-            
+
+             <AnalyticsNavigation />
 
             {/* Search and Filter Controls */}
             <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/60 shadow-lg p-4 mb-4">

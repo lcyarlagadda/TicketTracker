@@ -1,6 +1,6 @@
-// components/Forms/CreateTaskForm.tsx with fixed alignment
+// components/Forms/CreateTaskForm.tsx with Points Field
 import React, { useState } from 'react';
-import { Plus, FileText, Target, User, Calendar, Tag, Save, X } from 'lucide-react';
+import { Plus, FileText, Target, User, Calendar, Tag, Save, X, Hash } from 'lucide-react';
 import { Board, Task } from '../../store/types/types';
 import CustomDropdown from '../Atoms/CustomDropDown';
 import ErrorModal from '../Atoms/ErrorModal';
@@ -17,6 +17,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
     title: '',
     description: '',
     priority: 'Medium' as 'Low' | 'Medium' | 'High',
+    points: 3, // Default to 3 story points
     dueDate: '',
     tags: '',
     assignedTo: '',
@@ -29,51 +30,65 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
     dueDate: '',
     taskStatus: '',
     tags: '',
+    points: '',
   });
 
-  const validateField = (name: string, value: string) => {
+  const validateField = (name: string, value: string | number) => {
     let error = '';
     
     switch (name) {
       case 'title':
-        if (!value.trim()) {
-          error = 'Task title is required';
-        } else if (value.trim().length < 3) {
-          error = 'Task title must be at least 3 characters';
-        } else if (value.trim().length > 100) {
-          error = 'Task title must be less than 100 characters';
-        } else {
-          // Check for duplicate task titles in the current board (case-insensitive)
-          const isDuplicate = existingTasks.some(
-            task => task.title.toLowerCase().trim() === value.toLowerCase().trim()
-          );
-          if (isDuplicate) {
-            error = 'A task with this title already exists in this board';
+        if (typeof value === 'string') {
+          if (!value.trim()) {
+            error = 'Task title is required';
+          } else if (value.trim().length < 3) {
+            error = 'Task title must be at least 3 characters';
+          } else if (value.trim().length > 100) {
+            error = 'Task title must be less than 100 characters';
+          } else {
+            // Check for duplicate task titles in the current board (case-insensitive)
+            const isDuplicate = existingTasks.some(
+              task => task.title.toLowerCase().trim() === value.toLowerCase().trim()
+            );
+            if (isDuplicate) {
+              error = 'A task with this title already exists in this board';
+            }
+          }
+        }
+        break;
+      case 'points':
+        if (typeof value === 'number') {
+          if (value < 1 || value > 100) {
+            error = 'Story points must be between 1 and 100';
           }
         }
         break;
       case 'dueDate':
-        if (!value) {
-          error = 'Due date is required';
-        } else {
-          const selectedDate = new Date(value);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          
-          if (selectedDate < today) {
-            error = 'Due date cannot be in the past';
+        if (typeof value === 'string') {
+          if (!value) {
+            error = 'Due date is required';
+          } else {
+            const selectedDate = new Date(value);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            if (selectedDate < today) {
+              error = 'Due date cannot be in the past';
+            }
           }
         }
         break;
       case 'taskStatus':
-        if (!value) {
-          error = 'Status column is required';
-        } else if (!board.statuses.includes(value)) {
-          error = 'Invalid status selected';
+        if (typeof value === 'string') {
+          if (!value) {
+            error = 'Status column is required';
+          } else if (!board.statuses.includes(value)) {
+            error = 'Invalid status selected';
+          }
         }
         break;
       case 'tags':
-        if (value.trim()) {
+        if (typeof value === 'string' && value.trim()) {
           const tagList = value.split(',').map(tag => tag.trim()).filter(Boolean);
           if (tagList.length > 5) {
             error = 'Maximum 5 tags allowed';
@@ -92,32 +107,39 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+    const processedValue = name === 'points' ? parseInt(value) || 1 : value;
+    setForm(prev => ({ ...prev, [name]: processedValue }));
     
     // Real-time validation for specific fields
-    if (['title', 'dueDate', 'taskStatus', 'tags'].includes(name)) {
-      validateField(name, value);
+    if (['title', 'dueDate', 'taskStatus', 'tags', 'points'].includes(name)) {
+      validateField(name, processedValue);
     }
   };
 
   const handleDropdownChange = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }));
-    
-    if (['taskStatus'].includes(field)) {
-      validateField(field, value);
+    if (field === 'points') {
+      const pointsValue = parseInt(value);
+      setForm(prev => ({ ...prev, [field]: pointsValue }));
+      validateField(field, pointsValue);
+    } else {
+      setForm(prev => ({ ...prev, [field]: value }));
+      if (['taskStatus'].includes(field)) {
+        validateField(field, value);
+      }
     }
   };
 
   const validateForm = () => {
-    const { title, dueDate, taskStatus, tags } = form;
+    const { title, dueDate, taskStatus, tags, points } = form;
     
     // Validate all required fields
     const titleValid = validateField('title', title);
     const dueDateValid = validateField('dueDate', dueDate);
     const statusValid = validateField('taskStatus', taskStatus);
     const tagsValid = validateField('tags', tags);
+    const pointsValid = validateField('points', points);
 
-    if (!titleValid || !dueDateValid || !statusValid || !tagsValid) {
+    if (!titleValid || !dueDateValid || !statusValid || !tagsValid || !pointsValid) {
       setError('Please fix all validation errors before submitting.');
       return false;
     }
@@ -134,7 +156,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
   const handleSubmit = () => {
     if (!validateForm()) return;
 
-    const { title, description, priority, dueDate, taskStatus, tags, assignedTo } = form;
+    const { title, description, priority, points, dueDate, taskStatus, tags, assignedTo } = form;
 
     // Parse and clean tags
     const tagList = tags
@@ -157,7 +179,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
         email: '',
         name: '',
       },
-      points: null,
+      points,
       progressLog: [],
       comments: [],
       files: [],
@@ -171,14 +193,17 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
 
   const assigneeOptions = ['Unassigned', ...board.collaborators.map(c => c.name)];
   
+  // Common story point values (Fibonacci sequence)
+  const storyPointOptions = ['1', '2', '3', '5', '8', '13', '21'];
+  
   console.log('Board collaborators in CreateTaskForm:', board.collaborators); // Debug log
 
   return (
     <>
       <div className="space-y-6">
         {/* Title and Priority Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1 md:col-span-2">
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               <FileText size={16} className="inline mr-2" />
               Task Title *
@@ -219,22 +244,26 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
           </div>
         </div>
 
-        {/* Assignment, Status, and Due Date Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Points and Status Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-slate-700 mb-2">
-              <User size={16} className="inline mr-2" />
-              Assign To
+              <Hash size={16} className="inline mr-2" />
+              Story Points *
             </label>
-            <div className="h-12 relative z-0">
+            <div className="h-12">
               <CustomDropdown
-                options={assigneeOptions}
-                selected={form.assignedTo || 'Unassigned'}
-                setSelected={(val) => handleDropdownChange('assignedTo', val)}
-                placeholder="Select assignee"
+                options={storyPointOptions}
+                selected={form.points.toString()}
+                setSelected={(val) => handleDropdownChange('points', val)}
+                placeholder="Select points"
                 className="w-full h-full"
               />
             </div>
+            {fieldErrors.points && (
+              <p className="text-red-600 text-xs mt-1">{fieldErrors.points}</p>
+            )}
+            <p className="text-xs text-slate-500">Effort estimate (Fibonacci: 1, 2, 3, 5, 8, 13, 21)</p>
           </div>
           
           <div className="space-y-1">
@@ -254,6 +283,25 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
             {fieldErrors.taskStatus && (
               <p className="text-red-600 text-xs mt-1">{fieldErrors.taskStatus}</p>
             )}
+          </div>
+        </div>
+
+        {/* Assignment and Due Date Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <User size={16} className="inline mr-2" />
+              Assign To
+            </label>
+            <div className="h-12 relative z-0">
+              <CustomDropdown
+                options={assigneeOptions}
+                selected={form.assignedTo || 'Unassigned'}
+                setSelected={(val) => handleDropdownChange('assignedTo', val)}
+                placeholder="Select assignee"
+                className="w-full h-full"
+              />
+            </div>
           </div>
           
           <div className="space-y-1">
