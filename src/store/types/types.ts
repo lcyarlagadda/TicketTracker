@@ -30,6 +30,8 @@ export interface Board {
   reflectionData?: ReflectionData;
   burndownData?: BurndownData; 
   sprintPlanningData?: SprintPlanningData;
+  // Add index signature to allow dynamic sprint-specific data
+  [key: string]: any;
 }
 
 
@@ -41,6 +43,100 @@ export interface ProgressLogEntry {
   to?: string;
   timestamp: any;
   user: string;
+}
+
+// Enhanced types for Sprint Management - Add to types.ts
+
+export interface Sprint {
+  id: string;
+  sprintNumber: number;
+  name: string;
+  goals: string[];
+  keyFeatures: string[];
+  bottlenecks: string[];
+  duration: number; // in days
+  estimatedWorkHoursPerWeek: number;
+  teamSize: number;
+  holidays: string[]; // array of holiday dates
+  finalizedCapacity: number; // calculated capacity after holidays
+  capacityUtilization: number; // percentage
+  startDate: string;
+  endDate: string;
+  status: 'planning' | 'active' | 'completed' | 'cancelled';
+  boardId: string;
+  createdAt: any;
+  createdBy: {
+    uid: string;
+    email: string;
+    name: string;
+  };
+  // Calculated fields
+  totalStoryPoints: number;
+  estimatedCapacity: number; // duration * work hours * team size
+  actualVelocity?: number; // filled when sprint completes
+  burndownData?: SprintBurndownData[];
+  taskIds: string[]; // tasks assigned to this sprint
+}
+
+export interface SprintBurndownData {
+  date: string;
+  remainingPoints: number;
+  idealPoints: number;
+  completedPoints: number;
+  workingDay: boolean;
+}
+
+export interface SprintMetrics {
+  totalSprints: number;
+  activeSprints: number;
+  completedSprints: number;
+  averageVelocity: number;
+  averageCapacityUtilization: number;
+  totalStoryPointsDelivered: number;
+}
+
+export interface SprintAnalytics {
+  sprint: Sprint;
+  teamPerformance: {
+    topPerformers: ContributorMetrics[];
+    teamVelocity: number;
+    burndownTrend: 'ahead' | 'on-track' | 'behind';
+    completionRate: number;
+  };
+  insights: {
+    bottlenecksIdentified: string[];
+    improvements: string[];
+    shoutouts: string[];
+  };
+}
+
+export interface CreateSprintForm {
+  sprintNumber: number;
+  name: string;
+  goals: string[];
+  keyFeatures: string[];
+  bottlenecks: string[];
+  duration: number;
+  estimatedWorkHoursPerWeek: number;
+  startDate: string;
+  endDate: string;
+  holidays: string[];
+}
+
+// Enhanced Board interface to include sprints
+export interface BoardWithSprints extends Board {
+  sprints?: Sprint[];
+  currentSprintId?: string;
+}
+
+// Sprint service methods interface
+export interface SprintServiceMethods {
+  createSprint(userId: string, boardId: string, sprintData: Omit<Sprint, 'id'>): Promise<Sprint>;
+  updateSprint(userId: string, boardId: string, sprintId: string, updates: Partial<Sprint>): Promise<void>;
+  fetchBoardSprints(userId: string, boardId: string): Promise<Sprint[]>;
+  deleteSprint(userId: string, boardId: string, sprintId: string): Promise<void>;
+  assignTasksToSprint(userId: string, boardId: string, sprintId: string, taskIds: string[]): Promise<void>;
+  completeActiveSprint(userId: string, boardId: string, sprintId: string): Promise<Sprint>;
 }
 
 export interface Comment {
@@ -76,6 +172,7 @@ export interface Task {
   parentTaskId?: string;
   boardId: string;
   points: number | null;
+  sprintId?: string;
 }
 
 export interface CalendarTask extends Task {
@@ -197,7 +294,6 @@ export interface ShowAddForm {
   action: boolean;
 }
 
-export type TabKey = 'personal' | 'team' | 'lessons' | 'goals';
 export type TimeRange = '7d' | '30d' | '90d';
 
 export interface ReflectionData {
@@ -206,22 +302,7 @@ export interface ReflectionData {
   lessonsLearned: ReflectionItem[];
   futureGoals: ReflectionItem[];
   lastUpdated: string | null;
-}
-
-export interface NewReflectionForm {
-  content: string;
-  category: string;
-  priority: 'Low' | 'Medium' | 'High';
-  reviewType: 'self' | 'manager';
-  rating: number;
-}
-
-export interface TabConfig {
-  key: TabKey;
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  color: string;
-  description: string;
+  sprintId: string;
 }
 
 export interface ContributorMetrics {
@@ -289,6 +370,7 @@ export interface RetroData {
   lastUpdated: string;
   sprintName: string;
   facilitator: string;
+  sprintId: string;
 }
 
 export interface SprintPlanningData {
@@ -303,4 +385,90 @@ export interface SprintPlanningData {
   sprintObjective: string;
   riskAssessment: string;
   lastUpdated: string;
+}
+
+export interface RetroComment {
+  id: string;
+  text: string;
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  likes: string[]; // Array of user emails who liked this comment
+}
+
+export interface EnhancedRetroItem {
+  id: number;
+  type: 'went-well' | 'improve' | 'action';
+  content: string;
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  votes: string[]; // Array of user emails who voted
+  assignedTo?: string;
+  dueDate?: string;
+  priority: 'Low' | 'Medium' | 'High';
+  tags: string[];
+  comments: RetroComment[];
+}
+
+export interface SprintRetroData {
+  sprintId: string;
+  sprintNumber: number;
+  items: EnhancedRetroItem[];
+  lastUpdated: string;
+  sprintName: string;
+  facilitator: string;
+}
+
+// Enhanced types for sprint-specific reflection
+export interface ReflectionComment {
+  id: string;
+  text: string;
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  likes: string[]; // Array of user emails who liked this comment
+}
+
+export interface EnhancedReflectionItem {
+  id: number;
+  content: string;
+  category: string;
+  priority: 'Low' | 'Medium' | 'High';
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  tags: string[];
+  reviewType: 'self' | 'manager';
+  rating?: number;
+  comments: ReflectionComment[];
+  likes: string[]; // Array of user emails who liked this reflection
+}
+
+export interface SprintReflectionData {
+  sprintId: string;
+  sprintNumber: number;
+  personalGrowth: EnhancedReflectionItem[];
+  teamInsights: EnhancedReflectionItem[];
+  lessonsLearned: EnhancedReflectionItem[];
+  futureGoals: EnhancedReflectionItem[];
+  lastUpdated: string;
+}
+
+export interface NewReflectionForm {
+  content: string;
+  category: string;
+  priority: 'Low' | 'Medium' | 'High';
+  reviewType: 'self' | 'manager';
+  rating: number;
+}
+
+export type TabKey = 'personal' | 'team' | 'lessons' | 'goals';
+
+export interface TabConfig {
+  key: TabKey;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  color: string;
+  description: string;
 }

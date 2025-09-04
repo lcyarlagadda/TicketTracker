@@ -1,7 +1,7 @@
 // components/Analytics/AnalyticsTab.tsx
 import React, { useState, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Users, Target, Activity, Award, AlertTriangle, Clock, Zap } from 'lucide-react';
+import {  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { TrendingUp, Target, Activity, Award, Clock } from 'lucide-react';
 import { Task, Board, ContributorMetrics, VelocityData } from '../../../store/types/types';
 import BurndownManager from './BurnDown';
 
@@ -316,106 +316,9 @@ const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ tasks, board }) => {
             </div>
           </div>
 
-          {/* Areas for Improvement */}
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle size={20} className="text-orange-600" />
-              <h4 className="font-semibold text-orange-800">Growth Opportunities</h4>
-            </div>
-            <div className="space-y-3">
-              {contributorMetrics
-                .filter(c => c.efficiency < 80 || c.averageCycleTime > 5)
-                .slice(0, 5)
-                .map((contributor, index) => (
-                <div key={contributor.name} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-sm">
-                      {contributor.name.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="font-medium text-slate-800">{contributor.name}</div>
-                      <div className="text-sm text-slate-600">
-                        {contributor.averageCycleTime > 5 ? 'Long cycle time' : 'Low completion rate'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-orange-700">{contributor.averageCycleTime}d</div>
-                    <div className="text-sm text-slate-600">{contributor.efficiency}% efficiency</div>
-                  </div>
-                </div>
-              ))}
-              {contributorMetrics.filter(c => c.efficiency < 80 || c.averageCycleTime > 5).length === 0 && (
-                <div className="text-center py-4 text-slate-500">
-                  <Zap size={32} className="mx-auto mb-2 text-green-400" />
-                  <p className="text-sm">Great job! Team is performing well</p>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
-
-      {/* Current Sprint Tasks */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Current Sprint Tasks</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Todo */}
-          <div className="bg-slate-50 rounded-lg border border-slate-200 p-4">
-            <h4 className="font-medium text-slate-700 mb-3">To Do</h4>
-            <div className="space-y-2">
-              {currentSprintTasks
-                .filter(t => t.status === 'Todo' || t.status === 'todo')
-                .slice(0, 5)
-                .map(task => (
-                <div key={task.id} className="p-2 bg-white rounded border text-sm">
-                  <div className="font-medium text-slate-800 truncate">{task.title}</div>
-                  <div className="text-slate-600 text-xs">
-                    {getTaskPoints(task)} pts • {task.assignedTo || 'Unassigned'}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* In Progress */}
-          <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-            <h4 className="font-medium text-blue-700 mb-3">In Progress</h4>
-            <div className="space-y-2">
-              {currentSprintTasks
-                .filter(t => t.status === 'In Progress' || t.status === 'inprogress')
-                .slice(0, 5)
-                .map(task => (
-                <div key={task.id} className="p-2 bg-white rounded border text-sm">
-                  <div className="font-medium text-slate-800 truncate">{task.title}</div>
-                  <div className="text-slate-600 text-xs">
-                    {getTaskPoints(task)} pts • {task.assignedTo || 'Unassigned'}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Done */}
-          <div className="bg-green-50 rounded-lg border border-green-200 p-4">
-            <h4 className="font-medium text-green-700 mb-3">Done</h4>
-            <div className="space-y-2">
-              {currentSprintTasks
-                .filter(t => t.status === 'Done' || t.status === 'done')
-                .slice(0, 5)
-                .map(task => (
-                <div key={task.id} className="p-2 bg-white rounded border text-sm">
-                  <div className="font-medium text-slate-800 truncate">{task.title}</div>
-                  <div className="text-slate-600 text-xs">
-                    {getTaskPoints(task)} pts • {task.assignedTo || 'Unassigned'}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      
     </div>
   );
 };

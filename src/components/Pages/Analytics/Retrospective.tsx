@@ -1,20 +1,25 @@
-// components/Analytics/RetrospectiveTab.tsx
+// components/Analytics/EnhancedRetrospectiveTab.tsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, X, Trash2, Users, Calendar, CheckCircle, AlertCircle, Target, ThumbsUp, ThumbsDown, Settings } from 'lucide-react';
+import { Plus, X, Trash2, Users, Calendar, CheckCircle, AlertCircle, Target, ThumbsUp, ThumbsDown, Settings, MessageCircle, Send } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../hooks/redux';
 import { updateBoard } from '../../../store/slices/boardSlice';
-import { Task, Board, Collaborator, NewItemForm, RetroItem, RetroData } from '../../../store/types/types';
+import { Task, Board, Collaborator, Sprint, EnhancedRetroItem, NewItemForm, SprintRetroData, RetroComment } from '../../../store/types/types';
+import { useParams } from 'react-router-dom';
+import { sprintService } from '../../../services/sprintService';
 
-interface RetrospectiveTabProps {
-  board: Board & { retroData?: RetroData };
+
+interface EnhancedRetrospectiveTabProps {
+  board: Board;
   tasks: Task[];
 }
 
-const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => {
+const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ board, tasks }) => {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector(state => state.auth);
+  const { sprintNo } = useParams();
   
-  const [retroItems, setRetroItems] = useState<RetroItem[]>(board.retroData?.items || []);
+  const [sprint, setSprint] = useState<Sprint | null>(null);
+  const [retroItems, setRetroItems] = useState<EnhancedRetroItem[]>([]);
   const [newItem, setNewItem] = useState<NewItemForm>({ 
     type: 'went-well', 
     content: '', 
@@ -28,47 +33,42 @@ const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => 
     'action': false 
   });
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
+  const [commentTexts, setCommentTexts] = useState<{[key: number]: string}>({});
+  const [showComments, setShowComments] = useState<{[key: number]: boolean}>({});
 
-  // Auto-save retro data
-  const saveRetroData = async (): Promise<void> => {
-    if (!user || !board.id) return;
-    
-    setSaveStatus('saving');
-    try {
-      await dispatch(updateBoard({
-        userId: user.uid,
-        boardId: board.id,
-        updates: {
-          retroData: {
-            items: retroItems,
-            lastUpdated: new Date().toISOString(),
-            sprintName: board.retroData?.sprintName || `Sprint ${new Date().getMonth() + 1}`,
-            facilitator: board.retroData?.facilitator || user.displayName || user.email || 'Anonymous'
+  // Fetch sprint data
+  useEffect(() => {
+    const fetchSprintData = async () => {
+      if (!user || !board.id || !sprintNo) return;
+      
+      try {
+        const sprints = await sprintService.fetchBoardSprints(user.uid, board.id);
+        const targetSprint = sprints.find(s => s.sprintNumber === parseInt(sprintNo));
+        if (targetSprint) {
+          setSprint(targetSprint);
+          
+          // Load existing retro data for this sprint
+          const sprintRetroKey = `sprintRetro_${targetSprint.id}`;
+          const sprintRetroData = board[sprintRetroKey] as SprintRetroData | undefined;
+          
+          if (sprintRetroData) {
+            setRetroItems(sprintRetroData.items || []);
           }
         }
-      })).unwrap();
-      setSaveStatus('saved');
-    } catch (error) {
-      console.error('Error saving retro data:', error);
-      setSaveStatus('error');
-    }
-  };
+      } catch (error) {
+        console.error('Error fetching sprint data:', error);
+      }
+    };
 
-  useEffect(() => {
-    if (retroItems.length > 0) {
-      const timeoutId = setTimeout(saveRetroData, 1000);
-      return () => clearTimeout(timeoutId);
-    }
-    return undefined;
-  }, [retroItems]);
+    fetchSprintData();
+  }, [user, board.id, sprintNo, board]);
 
   // Sprint summary
   const sprintSummary = useMemo(() => {
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.status === 'Done' || t.status === 'done').length;
     const getTaskPoints = (task: Task): number => {
-      if ((task as any).points) return (task as any).points;
-      return task.priority === 'High' ? 8 : task.priority === 'Medium' ? 5 : 3;
+      return task.points || 0;
     };
     
     const totalPoints = tasks.reduce((sum, t) => sum + getTaskPoints(t), 0);
@@ -87,20 +87,81 @@ const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => 
     };
   }, [tasks, board.collaborators]);
 
-  const handleAddItem = (type: 'went-well' | 'improve' | 'action'): void => {
-    if (!newItem.content.trim()) return;
+  // Auto-save retro data - Fixed to avoid undefined values
+  const saveRetroData = async (): Promise<void> => {
+    if (!user || !board.id || !sprint) return;
+    
+    setSaveStatus('saving');
+    try {
+      const sprintRetroKey = `sprintRetro_${sprint.id}`;
+      const retroData: SprintRetroData = {
+        sprintId: sprint.id,
+        sprintNumber: sprint.sprintNumber,
+        items: retroItems,
+        lastUpdated: new Date().toISOString(),
+        sprintName: sprint.name,
+        facilitator: user.displayName || user.email || 'Anonymous'
+      };
 
-    const item: RetroItem = {
+      // Clean the update object to avoid undefined values
+      const updates: any = {
+        [sprintRetroKey]: retroData
+      };
+
+      // Remove any undefined values recursively
+      const cleanObject = (obj: any): any => {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(cleanObject);
+        
+        const cleaned: any = {};
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          if (value !== undefined) {
+            cleaned[key] = cleanObject(value);
+          }
+        });
+        return cleaned;
+      };
+
+      const cleanedUpdates = cleanObject(updates);
+
+      await dispatch(updateBoard({
+        userId: user.uid,
+        boardId: board.id,
+        updates: cleanedUpdates
+      })).unwrap();
+      
+      setSaveStatus('saved');
+    } catch (error) {
+      console.error('Error saving retro data:', error);
+      setSaveStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    if (retroItems.length > 0 && sprint) {
+      const timeoutId = setTimeout(saveRetroData, 1000);
+      return () => clearTimeout(timeoutId);
+    }
+    return undefined;
+  }, [retroItems, sprint]);
+
+  const handleAddItem = (type: 'went-well' | 'improve' | 'action'): void => {
+    if (!newItem.content.trim() || !user) return;
+
+    const item: EnhancedRetroItem = {
       id: Date.now(),
       type,
       content: newItem.content.trim(),
-      author: user?.displayName || user?.email || 'Current User',
+      author: user.displayName || user.email || 'Current User',
+      authorEmail: user.email || '',
       createdAt: new Date().toISOString(),
-      votes: 0,
+      votes: [],
       assignedTo: type === 'action' ? newItem.assignedTo : undefined,
       dueDate: type === 'action' ? newItem.dueDate : undefined,
       priority: type === 'action' ? newItem.priority : 'Medium',
-      tags: []
+      tags: [],
+      comments: []
     };
 
     setRetroItems([...retroItems, item]);
@@ -109,17 +170,81 @@ const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => 
   };
 
   const handleVote = (itemId: number): void => {
-    setRetroItems(retroItems.map(item =>
-      item.id === itemId ? { ...item, votes: (item.votes || 0) + 1 } : item
-    ));
+    if (!user?.email) return;
+
+    setRetroItems(retroItems.map(item => {
+      if (item.id === itemId) {
+        // Check if user is trying to vote on their own item
+        if (item.authorEmail === user.email) {
+          return item; // Don't allow self-voting
+        }
+
+        const hasVoted = item.votes.includes(user.email);
+        const newVotes = hasVoted 
+          ? item.votes.filter(email => email !== user.email)
+          : [...item.votes, user.email];
+        
+        return { ...item, votes: newVotes };
+      }
+      return item;
+    }));
   };
 
   const handleDeleteItem = (itemId: number): void => {
     setRetroItems(retroItems.filter(item => item.id !== itemId));
   };
 
-  const getItemsByType = (type: 'went-well' | 'improve' | 'action'): RetroItem[] => 
-    retroItems.filter(item => item.type === type).sort((a, b) => (b.votes || 0) - (a.votes || 0));
+  const handleAddComment = (itemId: number): void => {
+    const commentText = commentTexts[itemId]?.trim();
+    if (!commentText || !user) return;
+
+    const newComment: RetroComment = {
+      id: `${Date.now()}_${Math.random()}`,
+      text: commentText,
+      author: user.displayName || user.email || 'Current User',
+      authorEmail: user.email || '',
+      createdAt: new Date().toISOString(),
+      likes: []
+    };
+
+    setRetroItems(retroItems.map(item => 
+      item.id === itemId 
+        ? { ...item, comments: [...item.comments, newComment] }
+        : item
+    ));
+
+    setCommentTexts({ ...commentTexts, [itemId]: '' });
+  };
+
+  const handleLikeComment = (itemId: number, commentId: string): void => {
+    if (!user?.email) return;
+
+    setRetroItems(retroItems.map(item => {
+      if (item.id === itemId) {
+        const updatedComments = item.comments.map(comment => {
+          if (comment.id === commentId) {
+            // Don't allow liking own comment
+            if (comment.authorEmail === user.email) {
+              return comment;
+            }
+
+            const hasLiked = comment.likes.includes(user.email);
+            const newLikes = hasLiked
+              ? comment.likes.filter(email => email !== user.email)
+              : [...comment.likes, user.email];
+            
+            return { ...comment, likes: newLikes };
+          }
+          return comment;
+        });
+        return { ...item, comments: updatedComments };
+      }
+      return item;
+    }));
+  };
+
+  const getItemsByType = (type: 'went-well' | 'improve' | 'action'): EnhancedRetroItem[] => 
+    retroItems.filter(item => item.type === type).sort((a, b) => b.votes.length - a.votes.length);
 
   const columnConfig = {
     'went-well': {
@@ -154,17 +279,29 @@ const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => 
     }
   } as const;
 
+  if (!sprint) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle size={48} className="mx-auto mb-4 text-red-400" />
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Sprint Not Found</h2>
+          <p className="text-slate-600">Sprint {sprintNo} doesn't exist for this board.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Sprint Summary Header */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Sprint Retrospective</h2>
+            <h2 className="text-2xl font-bold text-slate-800">{sprint.name} Retrospective</h2>
             <p className="text-slate-600 mt-1">Reflect on what happened and plan improvements for the next sprint</p>
             <div className="mt-2 text-sm text-slate-500">
-              Facilitator: {board.retroData?.facilitator || user?.displayName || 'You'} • 
-              Last updated: {board.retroData?.lastUpdated ? new Date(board.retroData.lastUpdated).toLocaleDateString() : 'Never'}
+              Facilitator: {user?.displayName || 'You'} •
+              Last updated: {retroItems.length > 0 ? 'Recently' : 'Never'}
             </div>
           </div>
           <div className="flex items-center gap-2 text-sm">
@@ -193,7 +330,7 @@ const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => 
             <div className="text-xl font-bold text-blue-600">{sprintSummary.velocity}</div>
             <div className="text-sm text-slate-600">Story Points</div>
           </div>
-          <div className="text-center bg-red-50 rounded-lg p-3">
+          <div className="text-center bg-yellow-50 rounded-lg p-3">
             <div className="text-xl font-bold text-purple-600">{sprintSummary.completionRate}%</div>
             <div className="text-sm text-slate-600">Completion</div>
           </div>
@@ -348,26 +485,99 @@ const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => 
                       </div>
                     )}
                     
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => handleVote(item.id)}
-                          className="flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          disabled={item.authorEmail === user?.email}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
+                            item.authorEmail === user?.email 
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                              : item.votes.includes(user?.email || '') 
+                                ? 'bg-blue-500 text-white' 
+                                : 'bg-slate-100 hover:bg-slate-200'
+                          }`}
                         >
                           <span className="text-sm">👍</span>
-                          <span className="text-sm font-medium">{item.votes || 0}</span>
+                          <span className="text-sm font-medium">{item.votes.length}</span>
+                        </button>
+                        <button
+                          onClick={() => setShowComments({ ...showComments, [item.id]: !showComments[item.id] })}
+                          className="flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        >
+                          <MessageCircle size={14} />
+                          <span className="text-sm font-medium">{item.comments.length}</span>
                         </button>
                         <span className="text-xs text-slate-500">
                           by {item.author} • {new Date(item.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                      <button
-                        onClick={() => handleDeleteItem(item.id)}
-                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {item.authorEmail === user?.email && (
+                        <button
+                          onClick={() => handleDeleteItem(item.id)}
+                          className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
+
+                    {/* Comments Section */}
+                    {showComments[item.id] && (
+                      <div className="border-t border-slate-200 pt-3 mt-3">
+                        {/* Existing Comments */}
+                        {item.comments.length > 0 && (
+                          <div className="space-y-2 mb-3">
+                            {item.comments.map(comment => (
+                              <div key={comment.id} className="bg-slate-50 rounded-lg p-3">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="text-sm text-slate-700 mb-1">{comment.text}</p>
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                      <span>{comment.author}</span>
+                                      <span>•</span>
+                                      <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => handleLikeComment(item.id, comment.id)}
+                                    disabled={comment.authorEmail === user?.email}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                                      comment.authorEmail === user?.email 
+                                        ? 'text-slate-400 cursor-not-allowed' 
+                                        : comment.likes.includes(user?.email || '') 
+                                          ? 'text-red-600 bg-red-100' 
+                                          : 'text-slate-500 hover:text-red-600 hover:bg-red-100'
+                                    }`}
+                                  >
+                                    ❤️ {comment.likes.length}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add Comment */}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={commentTexts[item.id] || ''}
+                            onChange={(e) => setCommentTexts({ ...commentTexts, [item.id]: e.target.value })}
+                            placeholder="Add a comment..."
+                            className="flex-1 p-2 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
+                            onKeyPress={(e) => e.key === 'Enter' && handleAddComment(item.id)}
+                          />
+                          <button
+                            onClick={() => handleAddComment(item.id)}
+                            disabled={!commentTexts[item.id]?.trim()}
+                            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Send size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 
@@ -417,4 +627,4 @@ const RetrospectiveTab: React.FC<RetrospectiveTabProps> = ({ board, tasks }) => 
   );
 };
 
-export default RetrospectiveTab;
+export default EnhancedRetrospectiveTab;

@@ -13,6 +13,7 @@ import CreateBoardForm from '../Forms/CreateBoardForm';
 import TaskModal from './TaskModal';
 import ErrorModal from '../Atoms/ErrorModal';
 import CompactCalendar from './Calendar';
+import SprintPlanning from './Analytics/SprintPlanning';
 
 const BoardList: React.FC = () => {
   const dispatch = useAppDispatch();

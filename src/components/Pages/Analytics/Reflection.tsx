@@ -1,26 +1,31 @@
-// components/Analytics/ReflectionTab.tsx
+// components/Analytics/EnhancedReflectionTab.tsx
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Users, Lightbulb, Target, Plus, X, Trash2, User, Crown, Star, TrendingUp } from 'lucide-react';
+import { BookOpen, Users, Lightbulb, Target, Plus, X, Trash2, User, Crown, Star, TrendingUp, MessageCircle, Heart, Send } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../hooks/redux';
 import { updateBoard } from '../../../store/slices/boardSlice';
-import { Task, Board, ReflectionData, TabKey, NewReflectionForm, ReflectionItem, TabConfig } from '../../../store/types/types';
+import { Task, Board, Sprint, SprintReflectionData, NewReflectionForm, TabKey, TabConfig, EnhancedReflectionItem, ReflectionComment } from '../../../store/types/types';
+import { useParams } from 'react-router-dom';
+import { sprintService } from '../../../services/sprintService';
 
-
-interface ReflectionTabProps {
-  board: Board & { reflectionData?: ReflectionData };
+interface EnhancedReflectionTabProps {
+  board: Board;
   tasks: Task[];
 }
 
-const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
+const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({ board, tasks }) => {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector(state => state.auth);
+  const { sprintNo } = useParams();
   
-  const [reflectionData, setReflectionData] = useState<ReflectionData>(board.reflectionData || {
+  const [sprint, setSprint] = useState<Sprint | null>(null);
+  const [reflectionData, setReflectionData] = useState<SprintReflectionData>({
+    sprintId: '',
+    sprintNumber: 0,
     personalGrowth: [],
     teamInsights: [],
     lessonsLearned: [],
     futureGoals: [],
-    lastUpdated: null
+    lastUpdated: ''
   });
   
   const [activeTab, setActiveTab] = useState<TabKey>('personal');
@@ -33,47 +38,118 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
   });
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'self' | 'manager'>('all');
+  const [commentTexts, setCommentTexts] = useState<{[key: number]: string}>({});
+  const [showComments, setShowComments] = useState<{[key: number]: boolean}>({});
+  const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error'>('saved');
 
+  // Fetch sprint data
+  useEffect(() => {
+    const fetchSprintData = async () => {
+      if (!user || !board.id || !sprintNo) return;
+      
+      try {
+        const sprints = await sprintService.fetchBoardSprints(user.uid, board.id);
+        const targetSprint = sprints.find(s => s.sprintNumber === parseInt(sprintNo));
+        if (targetSprint) {
+          setSprint(targetSprint);
+          
+          // Load existing reflection data for this sprint
+          const sprintReflectionKey = `sprintReflection_${targetSprint.id}`;
+          const sprintReflectionData = board[sprintReflectionKey] as SprintReflectionData | undefined;
+          
+          if (sprintReflectionData) {
+            setReflectionData(sprintReflectionData);
+          } else {
+            setReflectionData({
+              sprintId: targetSprint.id,
+              sprintNumber: targetSprint.sprintNumber,
+              personalGrowth: [],
+              teamInsights: [],
+              lessonsLearned: [],
+              futureGoals: [],
+              lastUpdated: ''
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching sprint data:', error);
+      }
+    };
+
+    fetchSprintData();
+  }, [user, board.id, sprintNo, board]);
+
+  // Auto-save reflection data - Fixed to avoid undefined values
   const saveReflectionData = async (): Promise<void> => {
-    if (!user || !board.id) return;
+    if (!user || !board.id || !sprint) return;
     
+    setSaveStatus('saving');
     try {
+      const sprintReflectionKey = `sprintReflection_${sprint.id}`;
+      const updatedReflectionData = {
+        ...reflectionData,
+        lastUpdated: new Date().toISOString()
+      };
+
+      // Clean the update object to avoid undefined values
+      const updates: any = {
+        [sprintReflectionKey]: updatedReflectionData
+      };
+
+      // Remove any undefined values recursively
+      const cleanObject = (obj: any): any => {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(cleanObject);
+        
+        const cleaned: any = {};
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          if (value !== undefined) {
+            cleaned[key] = cleanObject(value);
+          }
+        });
+        return cleaned;
+      };
+
+      const cleanedUpdates = cleanObject(updates);
+
       await dispatch(updateBoard({
         userId: user.uid,
         boardId: board.id,
-        updates: {
-          reflectionData: {
-            ...reflectionData,
-            lastUpdated: new Date().toISOString()
-          }
-        } as Partial<Board>
+        updates: cleanedUpdates
       })).unwrap();
+      
+      setSaveStatus('saved');
     } catch (error) {
       console.error('Error saving reflection data:', error);
+      setSaveStatus('error');
     }
   };
 
   useEffect(() => {
-    if (Object.values(reflectionData).some(arr => Array.isArray(arr) && arr.length > 0)) {
+    if (Object.values(reflectionData).some(arr => Array.isArray(arr) && arr.length > 0) && sprint) {
       const timeoutId = setTimeout(saveReflectionData, 1000);
       return () => clearTimeout(timeoutId);
     }
     return undefined;
-  }, [reflectionData, user, board.id]);
+  }, [reflectionData, sprint]);
 
   const handleAddReflection = (): void => {
-    if (!newReflection.content.trim()) return;
+    if (!newReflection.content.trim() || !user) return;
 
-    const reflection: ReflectionItem = {
+    const reflection: EnhancedReflectionItem = {
       id: Date.now(),
       content: newReflection.content.trim(),
       category: newReflection.category,
       priority: newReflection.priority,
-      author: user?.displayName || user?.email || 'Current User',
+      author: user.displayName || user.email || 'Current User',
+      authorEmail: user.email || '',
       createdAt: new Date().toISOString(),
       tags: [],
       reviewType: newReflection.reviewType,
-      rating: newReflection.rating
+      rating: newReflection.rating,
+      comments: [],
+      likes: []
     };
 
     const category = activeTab === 'personal' ? 'personalGrowth' :
@@ -95,10 +171,89 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
     setShowAddForm(false);
   };
 
-  const handleDeleteReflection = (category: keyof Omit<ReflectionData, 'lastUpdated'>, id: number): void => {
+  const handleDeleteReflection = (category: keyof Omit<SprintReflectionData, 'sprintId' | 'sprintNumber' | 'lastUpdated'>, id: number): void => {
     setReflectionData({
       ...reflectionData,
-      [category]: (reflectionData[category] as ReflectionItem[]).filter(item => item.id !== id)
+      [category]: (reflectionData[category] as EnhancedReflectionItem[]).filter(item => item.id !== id)
+    });
+  };
+
+  const handleLikeReflection = (category: keyof Omit<SprintReflectionData, 'sprintId' | 'sprintNumber' | 'lastUpdated'>, id: number): void => {
+    if (!user?.email) return;
+
+    setReflectionData({
+      ...reflectionData,
+      [category]: (reflectionData[category] as EnhancedReflectionItem[]).map(item => {
+        if (item.id === id) {
+          // Don't allow liking own reflection
+          if (item.authorEmail === user.email) {
+            return item;
+          }
+
+          const hasLiked = item.likes.includes(user.email);
+          const newLikes = hasLiked
+            ? item.likes.filter(email => email !== user.email)
+            : [...item.likes, user.email];
+          
+          return { ...item, likes: newLikes };
+        }
+        return item;
+      })
+    });
+  };
+
+  const handleAddComment = (category: keyof Omit<SprintReflectionData, 'sprintId' | 'sprintNumber' | 'lastUpdated'>, itemId: number): void => {
+    const commentText = commentTexts[itemId]?.trim();
+    if (!commentText || !user) return;
+
+    const newComment: ReflectionComment = {
+      id: `${Date.now()}_${Math.random()}`,
+      text: commentText,
+      author: user.displayName || user.email || 'Current User',
+      authorEmail: user.email || '',
+      createdAt: new Date().toISOString(),
+      likes: []
+    };
+
+    setReflectionData({
+      ...reflectionData,
+      [category]: (reflectionData[category] as EnhancedReflectionItem[]).map(item => 
+        item.id === itemId 
+          ? { ...item, comments: [...item.comments, newComment] }
+          : item
+      )
+    });
+
+    setCommentTexts({ ...commentTexts, [itemId]: '' });
+  };
+
+  const handleLikeComment = (category: keyof Omit<SprintReflectionData, 'sprintId' | 'sprintNumber' | 'lastUpdated'>, itemId: number, commentId: string): void => {
+    if (!user?.email) return;
+
+    setReflectionData({
+      ...reflectionData,
+      [category]: (reflectionData[category] as EnhancedReflectionItem[]).map(item => {
+        if (item.id === itemId) {
+          const updatedComments = item.comments.map(comment => {
+            if (comment.id === commentId) {
+              // Don't allow liking own comment
+              if (comment.authorEmail === user.email) {
+                return comment;
+              }
+
+              const hasLiked = comment.likes.includes(user.email);
+              const newLikes = hasLiked
+                ? comment.likes.filter(email => email !== user.email)
+                : [...comment.likes, user.email];
+              
+              return { ...comment, likes: newLikes };
+            }
+            return comment;
+          });
+          return { ...item, comments: updatedComments };
+        }
+        return item;
+      })
     });
   };
 
@@ -133,7 +288,7 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
     }
   ];
 
-  const getCurrentCategoryData = (): ReflectionItem[] => {
+  const getCurrentCategoryData = (): EnhancedReflectionItem[] => {
     const data = (() => {
       switch(activeTab) {
         case 'personal': return reflectionData.personalGrowth || [];
@@ -149,7 +304,7 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
     return data.filter(item => item.reviewType === reviewFilter);
   };
 
-  const getCurrentCategoryKey = (): keyof Omit<ReflectionData, 'lastUpdated'> => {
+  const getCurrentCategoryKey = (): keyof Omit<SprintReflectionData, 'sprintId' | 'sprintNumber' | 'lastUpdated'> => {
     switch(activeTab) {
       case 'personal': return 'personalGrowth';
       case 'team': return 'teamInsights';
@@ -165,7 +320,7 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
         case 'blue': return 'bg-blue-600 text-white shadow-lg';
         case 'green': return 'bg-green-600 text-white shadow-lg';
         case 'yellow': return 'bg-yellow-600 text-white shadow-lg';
-        case 'purple': return 'bg-red-50 text-white shadow-lg';
+        case 'purple': return 'bg-yellow-600 text-white shadow-lg';
         default: return 'bg-blue-600 text-white shadow-lg';
       }
     }
@@ -191,7 +346,7 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
     managerReviews: Object.values(reflectionData).reduce((sum, arr) => 
       sum + (Array.isArray(arr) ? arr.filter(item => item.reviewType === 'manager').length : 0), 0),
     avgRating: (() => {
-      const allItems: ReflectionItem[] = [
+      const allItems: EnhancedReflectionItem[] = [
         ...(reflectionData.personalGrowth || []),
         ...(reflectionData.teamInsights || []),
         ...(reflectionData.lessonsLearned || []),
@@ -204,6 +359,18 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
     })()
   };
 
+  if (!sprint) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <BookOpen size={48} className="mx-auto mb-4 text-slate-400" />
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Sprint Not Found</h2>
+          <p className="text-slate-600">Sprint {sprintNo} doesn't exist for this board.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -211,10 +378,20 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
         <div className="flex items-center gap-3 mb-4">
           <BookOpen size={24} className="text-blue-600" />
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Sprint Reflection</h2>
+            <h2 className="text-2xl font-bold text-slate-800">{sprint.name} - Reflection</h2>
             <p className="text-slate-600">
               Comprehensive self and manager review covering personal growth, team insights, and future planning
             </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 text-sm">
+            <div className={`w-2 h-2 rounded-full ${
+              saveStatus === 'saving' ? 'bg-yellow-500 animate-pulse' :
+              saveStatus === 'saved' ? 'bg-green-500' : 'bg-red-500'
+            }`}></div>
+            <span className="text-slate-600">
+              {saveStatus === 'saving' ? 'Saving...' :
+               saveStatus === 'saved' ? 'Saved' : 'Error saving'}
+            </span>
           </div>
         </div>
         
@@ -227,7 +404,7 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
             <div className="text-2xl font-bold text-green-600">{summaryStats.selfReviews}</div>
             <div className="text-sm text-green-700">Self Reviews</div>
           </div>
-          <div className="bg-red-50 rounded-lg border border-purple-200 p-4 text-center">
+          <div className="bg-yellow-50 rounded-lg border border-purple-200 p-4 text-center">
             <div className="text-2xl font-bold text-purple-600">{summaryStats.managerReviews}</div>
             <div className="text-sm text-purple-700">Manager Reviews</div>
           </div>
@@ -387,7 +564,7 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-lg ${
-                      reflection.reviewType === 'self' ? 'bg-blue-100' : 'bg-red-600'
+                      reflection.reviewType === 'self' ? 'bg-blue-100' : 'bg-yellow-100'
                     }`}>
                       {reflection.reviewType === 'self' ? 
                         <User size={16} className={reflection.reviewType === 'self' ? 'text-blue-600' : 'text-purple-600'} /> :
@@ -397,7 +574,7 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          reflection.reviewType === 'self' ? 'bg-blue-100 text-blue-700' : 'bg-red-600 text-purple-700'
+                          reflection.reviewType === 'self' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-purple-700'
                         }`}>
                           {reflection.reviewType === 'self' ? 'Self Review' : 'Manager Review'}
                         </span>
@@ -420,15 +597,101 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
                         {renderStars(reflection.rating)}
                       </div>
                     )}
+                    {reflection.authorEmail === user?.email && (
+                      <button
+                        onClick={() => handleDeleteReflection(getCurrentCategoryKey(), reflection.id)}
+                        className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                <p className="text-slate-700 leading-relaxed mb-4">{reflection.content}</p>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => handleDeleteReflection(getCurrentCategoryKey(), reflection.id)}
-                      className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
+                      onClick={() => handleLikeReflection(getCurrentCategoryKey(), reflection.id)}
+                      disabled={reflection.authorEmail === user?.email}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
+                        reflection.authorEmail === user?.email 
+                          ? 'text-slate-400 cursor-not-allowed' 
+                          : reflection.likes.includes(user?.email || '') 
+                            ? 'text-red-600 bg-red-100' 
+                            : 'text-slate-500 hover:text-red-600 hover:bg-red-100'
+                      }`}
                     >
-                      <Trash2 size={14} />
+                      <Heart size={14} />
+                      <span className="text-sm font-medium">{reflection.likes.length}</span>
+                    </button>
+                    <button
+                      onClick={() => setShowComments({ ...showComments, [reflection.id]: !showComments[reflection.id] })}
+                      className="flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                      <MessageCircle size={14} />
+                      <span className="text-sm font-medium">{reflection.comments.length}</span>
                     </button>
                   </div>
                 </div>
-                <p className="text-slate-700 leading-relaxed">{reflection.content}</p>
+
+                {/* Comments Section */}
+                {showComments[reflection.id] && (
+                  <div className="border-t border-slate-200 pt-4 mt-4">
+                    {/* Existing Comments */}
+                    {reflection.comments.length > 0 && (
+                      <div className="space-y-3 mb-4">
+                        {reflection.comments.map(comment => (
+                          <div key={comment.id} className="bg-slate-50 rounded-lg p-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <p className="text-sm text-slate-700 mb-1">{comment.text}</p>
+                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                  <span>{comment.author}</span>
+                                  <span>•</span>
+                                  <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleLikeComment(getCurrentCategoryKey(), reflection.id, comment.id)}
+                                disabled={comment.authorEmail === user?.email}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                                  comment.authorEmail === user?.email 
+                                    ? 'text-slate-400 cursor-not-allowed' 
+                                    : comment.likes.includes(user?.email || '') 
+                                      ? 'text-red-600 bg-red-100' 
+                                      : 'text-slate-500 hover:text-red-600 hover:bg-red-100'
+                                }`}
+                              >
+                                <Heart size={12} /> {comment.likes.length}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add Comment */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={commentTexts[reflection.id] || ''}
+                        onChange={(e) => setCommentTexts({ ...commentTexts, [reflection.id]: e.target.value })}
+                        placeholder="Add a comment..."
+                        className="flex-1 p-2 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
+                        onKeyPress={(e) => e.key === 'Enter' && handleAddComment(getCurrentCategoryKey(), reflection.id)}
+                      />
+                      <button
+                        onClick={() => handleAddComment(getCurrentCategoryKey(), reflection.id)}
+                        disabled={!commentTexts[reflection.id]?.trim()}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Send size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           ) : (
@@ -484,4 +747,4 @@ const ReflectionTab: React.FC<ReflectionTabProps> = ({ board, tasks }) => {
   );
 };
 
-export default ReflectionTab;
+export default EnhancedReflectionTab;

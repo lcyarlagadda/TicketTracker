@@ -1,4 +1,4 @@
-// App.tsx - Updated with Analytics Routes
+// App.tsx - Updated with Sprint Analytics Routes
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { Provider } from 'react-redux';
@@ -10,6 +10,7 @@ import Header from './components/Header';
 import BoardList from './components/Pages/BoardList';
 import TaskBoard from './components/Pages/TaskBoard';
 import AnalyticsRouter from './components/Pages/Analytics/AnalyticsRouter';
+import SprintPlanning from './components/Pages/Analytics/SprintPlanning';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
@@ -30,10 +31,22 @@ function TaskBoardWrapper() {
   return <TaskBoard boardId={boardId} />;
 }
 
-function AnalyticsWrapper() {
+function SprintPlanningWrapper() {
   const { boardId } = useParams<{ boardId: string }>();
   
   if (!boardId) {
+    return <Navigate to="/boards" />;
+  }
+
+  console.log("Rendering SprintPlanningWrapper with boardId:", boardId);
+
+  return <SprintPlanning boardId={boardId} />;
+}
+
+function SprintAnalyticsWrapper() {
+  const { boardId, sprintNo } = useParams<{ boardId: string; sprintNo: string }>();
+  
+  if (!boardId || !sprintNo) {
     return <Navigate to="/boards" />;
   }
 
@@ -74,7 +87,6 @@ function AppContent() {
           }
         />
         
-        
         {/* Board Routes */}
         <Route
           path="/board/:boardId"
@@ -85,44 +97,43 @@ function AppContent() {
             </PrivateRoute>
           }
         />
-        
-        {/* Analytics Routes */}
-        <Route
-          path="/board/:boardId/analytics"
-          element={
-            <PrivateRoute>
-              <AnalyticsWrapper />
-            </PrivateRoute>
-          }
-        />
-        
-        <Route
-          path="/board/:boardId/retro"
-          element={
-            <PrivateRoute>
-              <AnalyticsWrapper />
-            </PrivateRoute>
-          }
-        />
-        
-        <Route
-          path="/board/:boardId/reflection"
-          element={
-            <PrivateRoute>
-              <AnalyticsWrapper />
-            </PrivateRoute>
-          }
-        />
 
         <Route
           path="/board/:boardId/planning"
           element={
             <PrivateRoute>
-              <AnalyticsWrapper />
+              <SprintPlanningWrapper />
             </PrivateRoute>
           }
         />
         
+        <Route
+          path="/board/:boardId/:sprintNo/analytics"
+          element={
+            <PrivateRoute>
+              <SprintAnalyticsWrapper />
+            </PrivateRoute>
+          }
+        />
+        
+        <Route
+          path="/board/:boardId/:sprintNo/retro"
+          element={
+            <PrivateRoute>
+              <SprintAnalyticsWrapper />
+            </PrivateRoute>
+          }
+        />
+        
+        <Route
+          path="/board/:boardId/:sprintNo/reflection"
+          element={
+            <PrivateRoute>
+              <SprintAnalyticsWrapper />
+            </PrivateRoute>
+          }
+        />
+
         <Route path="*" element={<p className="p-6 text-center">404 - Page Not Found</p>} />
       </Routes>
     </Router>

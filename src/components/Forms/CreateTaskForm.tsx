@@ -1,7 +1,7 @@
-// components/Forms/CreateTaskForm.tsx with Points Field
+// components/Forms/CreateTaskForm.tsx with Sprint Selection
 import React, { useState } from 'react';
-import { Plus, FileText, Target, User, Calendar, Tag, Save, X, Hash } from 'lucide-react';
-import { Board, Task } from '../../store/types/types';
+import { Plus, FileText, Target, User, Calendar, Tag, Save, X, Hash, Zap } from 'lucide-react';
+import { Board, Task, Sprint } from '../../store/types/types';
 import CustomDropdown from '../Atoms/CustomDropDown';
 import ErrorModal from '../Atoms/ErrorModal';
 
@@ -9,10 +9,17 @@ interface CreateTaskFormProps {
   board: Board;
   onSubmit: (taskData: Omit<Task, 'id' | 'boardId'>) => void;
   onCancel: () => void;
-  existingTasks: Task[]; 
+  existingTasks: Task[];
+  sprints?: Sprint[];
 }
 
-const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCancel, existingTasks }) => {
+const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ 
+  board, 
+  onSubmit, 
+  onCancel, 
+  existingTasks,
+  sprints = [] 
+}) => {
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -22,6 +29,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
     tags: '',
     assignedTo: '',
     taskStatus: '',
+    sprintId: '', // Add sprint selection
   });
 
   const [error, setError] = useState('');
@@ -31,6 +39,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
     taskStatus: '',
     tags: '',
     points: '',
+    sprintId: '',
   });
 
   const validateField = (name: string, value: string | number) => {
@@ -87,6 +96,16 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
           }
         }
         break;
+      case 'sprintId':
+        if (typeof value === 'string' && value && sprints.length > 0) {
+          const validSprint = sprints.find(s => s.id === value);
+          if (!validSprint) {
+            error = 'Invalid sprint selected';
+          } else if (validSprint.status === 'completed') {
+            error = 'Cannot assign task to completed sprint';
+          }
+        }
+        break;
       case 'tags':
         if (typeof value === 'string' && value.trim()) {
           const tagList = value.split(',').map(tag => tag.trim()).filter(Boolean);
@@ -111,7 +130,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
     setForm(prev => ({ ...prev, [name]: processedValue }));
     
     // Real-time validation for specific fields
-    if (['title', 'dueDate', 'taskStatus', 'tags', 'points'].includes(name)) {
+    if (['title', 'dueDate', 'taskStatus', 'tags', 'points', 'sprintId'].includes(name)) {
       validateField(name, processedValue);
     }
   };
@@ -123,14 +142,14 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
       validateField(field, pointsValue);
     } else {
       setForm(prev => ({ ...prev, [field]: value }));
-      if (['taskStatus'].includes(field)) {
+      if (['taskStatus', 'sprintId'].includes(field)) {
         validateField(field, value);
       }
     }
   };
 
   const validateForm = () => {
-    const { title, dueDate, taskStatus, tags, points } = form;
+    const { title, dueDate, taskStatus, tags, points, sprintId } = form;
     
     // Validate all required fields
     const titleValid = validateField('title', title);
@@ -138,8 +157,9 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
     const statusValid = validateField('taskStatus', taskStatus);
     const tagsValid = validateField('tags', tags);
     const pointsValid = validateField('points', points);
+    const sprintValid = validateField('sprintId', sprintId);
 
-    if (!titleValid || !dueDateValid || !statusValid || !tagsValid || !pointsValid) {
+    if (!titleValid || !dueDateValid || !statusValid || !tagsValid || !pointsValid || !sprintValid) {
       setError('Please fix all validation errors before submitting.');
       return false;
     }
@@ -156,7 +176,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
   const handleSubmit = () => {
     if (!validateForm()) return;
 
-    const { title, description, priority, points, dueDate, taskStatus, tags, assignedTo } = form;
+    const { title, description, priority, points, dueDate, taskStatus, tags, assignedTo, sprintId } = form;
 
     // Parse and clean tags
     const tagList = tags
@@ -180,6 +200,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
         name: '',
       },
       points,
+      sprintId: sprintId || undefined, // Include sprint ID if selected
       progressLog: [],
       comments: [],
       files: [],
@@ -196,6 +217,27 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
   // Common story point values (Fibonacci sequence)
   const storyPointOptions = ['1', '2', '3', '5', '8', '13', '21'];
   
+  // Sprint options - only show active and planning sprints
+  const sprintOptions = [
+    'No Sprint',
+    ...sprints
+      .filter(s => s.status === 'active' || s.status === 'planning')
+      .map(s => ({
+        value: s.id,
+        label: s.name
+      }))
+  ];
+
+  const getSprintOptionValue = (option: string | { value: string; label: string }) => {
+    if (typeof option === 'string') return option === 'No Sprint' ? '' : option;
+    return option.value;
+  };
+
+  const getSprintOptionLabel = (option: string | { value: string; label: string }) => {
+    if (typeof option === 'string') return option;
+    return option.label;
+  };
+
   console.log('Board collaborators in CreateTaskForm:', board.collaborators); // Debug log
 
   return (
@@ -244,8 +286,8 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
           </div>
         </div>
 
-        {/* Points and Status Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Points, Status, and Sprint Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               <Hash size={16} className="inline mr-2" />
@@ -283,6 +325,36 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({ board, onSubmit, onCanc
             {fieldErrors.taskStatus && (
               <p className="text-red-600 text-xs mt-1">{fieldErrors.taskStatus}</p>
             )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <Zap size={16} className="inline mr-2" />
+              Sprint Assignment
+            </label>
+            <div className="h-12 relative z-0">
+              <CustomDropdown
+                options={sprintOptions.map(option => getSprintOptionLabel(option))}
+                selected={
+                  form.sprintId 
+                    ? form.sprintId
+                    : 'No Sprint'
+                }
+                setSelected={(val) => {
+                  const selectedOption = sprintOptions.find(option => getSprintOptionLabel(option) === val);
+                  const value = selectedOption ? getSprintOptionValue(selectedOption) : '';
+                  handleDropdownChange('sprintId', value);
+                }}
+                placeholder="Select sprint"
+                className="w-full h-full"
+              />
+            </div>
+            {fieldErrors.sprintId && (
+              <p className="text-red-600 text-xs mt-1">{fieldErrors.sprintId}</p>
+            )}
+            <p className="text-xs text-slate-500">
+              {sprints.length === 0 ? 'No sprints available' : 'Optional sprint assignment'}
+            </p>
           </div>
         </div>
 

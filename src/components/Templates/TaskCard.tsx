@@ -157,14 +157,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                 </div>
               </div>
 
-              {task.description && (
-                <p className="text-sm text-slate-600 mb-3 leading-relaxed">
-                  {task.description.length > 60
-                    ? `${task.description.slice(0, 60)}...`
-                    : task.description}
-                </p>
-              )}
-
               {childTasks.length > 0 && (
                 <div className="mb-3">
                   <div 
