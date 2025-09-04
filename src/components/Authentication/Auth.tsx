@@ -18,6 +18,8 @@ import {
   signInUser, 
   signUpUser, 
   signInWithGoogle, 
+  signInWithMicrosoft,
+  signInWithGitHub,
   signOut as signOutUser,
   clearError 
 } from '../../store/slices/authSlice';
@@ -276,9 +278,25 @@ const Auth: React.FC = () => {
               disabled={loading}
               className="w-full border-2 border-slate-300 hover:border-slate-400 hover:bg-slate-50 px-6 py-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed mb-6 hover:scale-105"
             >
-              <Chrome size={20} className="text-blue-500" />
               <span className="font-medium text-slate-700">Continue with Google</span>
             </button>
+
+          {/* GitHub Sign In */}
+          <button
+            onClick={async () => {
+              try {
+                await dispatch(signInWithGitHub()).unwrap();
+                navigate('/boards');
+              } catch (err: any) {
+                console.error('GitHub sign in error:', err);
+              }
+            }}
+            disabled={loading}
+            className="w-full border-2 border-slate-300 hover:border-slate-400 hover:bg-slate-50 px-6 py-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed mb-4 hover:scale-105"
+          >
+            <span className="font-medium text-slate-700">Continue with GitHub</span>
+          </button>
+
 
             {/* Toggle Sign Up/In */}
             <div className="text-center">

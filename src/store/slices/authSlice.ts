@@ -6,7 +6,9 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
   updateProfile,
-  onAuthStateChanged
+  onAuthStateChanged,
+  OAuthProvider,
+  GithubAuthProvider
 } from 'firebase/auth';
 import { auth, googleProvider } from '../../firebase';
 import { User, AuthState } from '../types/types';
@@ -52,6 +54,25 @@ export const signInWithGoogle = createAsyncThunk(
       email: userCredential.user.email!,
       displayName: userCredential.user.displayName,
     };
+  }
+);
+
+export const signInWithMicrosoft = createAsyncThunk(
+  'auth/signInWithMicrosoft',
+  async () => {
+    const provider = new OAuthProvider('microsoft.com');
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
+  }
+);
+
+// GitHub
+export const signInWithGitHub = createAsyncThunk(
+  'auth/signInWithGitHub',
+  async () => {
+    const provider = new GithubAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
   }
 );
 
