@@ -1,4 +1,4 @@
-// App.tsx - Verify this matches exactly
+// App.tsx - Updated with Analytics Routes
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { Provider } from 'react-redux';
@@ -9,7 +9,7 @@ import Auth from './components/Authentication/Auth';
 import Header from './components/Header';
 import BoardList from './components/Pages/BoardList';
 import TaskBoard from './components/Pages/TaskBoard';
-import Calendar from './components/Pages/Calendar'; // <- Make sure this import works
+import AnalyticsRouter from './components/Pages/Analytics/AnalyticsRouter';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
@@ -22,13 +22,22 @@ function PrivateRoute({ children }: PrivateRouteProps) {
 
 function TaskBoardWrapper() {
   const { boardId } = useParams<{ boardId: string }>();
-  const { user } = useAppSelector(state => state.auth);
   
   if (!boardId) {
     return <Navigate to="/boards" />;
   }
 
   return <TaskBoard boardId={boardId} />;
+}
+
+function AnalyticsWrapper() {
+  const { boardId } = useParams<{ boardId: string }>();
+  
+  if (!boardId) {
+    return <Navigate to="/boards" />;
+  }
+
+  return <AnalyticsRouter />;
 }
 
 function AppContent() {
@@ -54,6 +63,7 @@ function AppContent() {
     <Router>
       <Routes>
         <Route path="/" element={!user ? <Auth /> : <Navigate to="/boards" />} />
+        
         <Route
           path="/boards"
           element={
@@ -63,6 +73,9 @@ function AppContent() {
             </PrivateRoute>
           }
         />
+        
+        
+        {/* Board Routes */}
         <Route
           path="/board/:boardId"
           element={
@@ -72,6 +85,44 @@ function AppContent() {
             </PrivateRoute>
           }
         />
+        
+        {/* Analytics Routes */}
+        <Route
+          path="/board/:boardId/analytics"
+          element={
+            <PrivateRoute>
+              <AnalyticsWrapper />
+            </PrivateRoute>
+          }
+        />
+        
+        <Route
+          path="/board/:boardId/retro"
+          element={
+            <PrivateRoute>
+              <AnalyticsWrapper />
+            </PrivateRoute>
+          }
+        />
+        
+        <Route
+          path="/board/:boardId/reflection"
+          element={
+            <PrivateRoute>
+              <AnalyticsWrapper />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/board/:boardId/planning"
+          element={
+            <PrivateRoute>
+              <AnalyticsWrapper />
+            </PrivateRoute>
+          }
+        />
+        
         <Route path="*" element={<p className="p-6 text-center">404 - Page Not Found</p>} />
       </Routes>
     </Router>
