@@ -1,6 +1,6 @@
 // components/Analytics/SprintPlanningWithModal.tsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Target, Plus, ArrowLeft, Play, Square, CheckCircle, BarChart3, MessageSquare, BookOpen, AlertTriangle, X, Save, Edit3 } from 'lucide-react';
+import { Target, Plus, ArrowLeft, Play, Square, CheckCircle, BarChart3, MessageSquare, BookOpen, AlertTriangle, X, Save, Edit3, EyeIcon } from 'lucide-react';
 import { useAppSelector } from '../../../hooks/redux';
 import { useTasksSync } from '../../../hooks/useFirebaseSync';
 import { Sprint } from '../../../store/types/types';
@@ -279,8 +279,16 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                       onClick={() => handleEditSprint(sprint)}
                       className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
                     >
-                      <Edit3 size={14} />
-                      {sprint.status === 'completed' ? 'View' : 'Edit'}
+                      
+                      {sprint.status === 'completed' ? (
+                        <>
+                          <EyeIcon size={14} /> View
+                        </>
+                      ) : (
+                        <>
+                          <Edit3 size={14} /> Edit
+                        </>
+                      )}
                     </button>
                     {(sprint.status === 'active' || sprint.status === 'completed') && (
                       <>

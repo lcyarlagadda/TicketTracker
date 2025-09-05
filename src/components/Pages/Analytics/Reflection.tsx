@@ -698,7 +698,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       key: "goals",
       label: "Future Goals",
       icon: Target,
-      color: "purple",
+      color: "orange",
       description:
         "Objectives, aspirations, and plans for upcoming sprints and beyond",
     },
@@ -751,8 +751,8 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           return "bg-green-600 text-white shadow-lg";
         case "yellow":
           return "bg-yellow-600 text-white shadow-lg";
-        case "purple":
-          return "bg-purple-600 text-white shadow-lg";
+        case "orange":
+          return "bg-orange-600 text-white shadow-lg";
         default:
           return "bg-blue-600 text-white shadow-lg";
       }
@@ -842,7 +842,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
               team insights, and future planning
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2 text-sm">
+          {/* <div className="ml-auto flex items-center gap-2 text-sm">
             <div
               className={`w-2 h-2 rounded-full ${
                 saveStatus === "saving"
@@ -859,7 +859,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                 ? "Saved"
                 : "Error saving"}
             </span>
-          </div>
+          </div> */}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -888,26 +888,6 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
             <div className="text-sm text-yellow-700">
               Avg Rating: {summaryStats.avgRating}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Mention Helper */}
-      <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200 p-4">
-        <div className="flex items-center gap-6 text-sm">
-          <div className="flex items-center gap-2">
-            <AtSign size={16} className="text-blue-600" />
-            <span className="text-slate-700">
-              Type <code className="bg-white px-1 rounded">@username</code> to
-              mention team members
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Hash size={16} className="text-green-600" />
-            <span className="text-slate-700">
-              Type <code className="bg-white px-1 rounded">#task</code> to
-              reference tasks (clickable)
-            </span>
           </div>
         </div>
       </div>
