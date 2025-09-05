@@ -19,6 +19,7 @@ import {
   AtSign,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../hooks/redux";
+import { notificationService } from "../../../services/notificationService";
 import { updateBoard } from "../../../store/slices/boardSlice";
 import {
   Task,
@@ -368,6 +369,17 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     }));
   }, [board.collaborators]);
 
+  // Helper function to extract mentions from text
+  const extractMentions = (text: string): MentionUser[] => {
+    const mentionMatches = text.match(/@(\w+)/g);
+    if (!mentionMatches) return [];
+    
+    return mentionMatches
+      .map(match => match.slice(1)) // Remove @ symbol
+      .map(username => mentionUsers.find(user => user.name === username))
+      .filter((user): user is MentionUser => user !== undefined);
+  };
+
   // Fetch sprint data
   useEffect(() => {
     const fetchSprintData = async () => {
@@ -511,6 +523,24 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       rating: 3,
     });
     setShowAddForm(false);
+
+    // Send notifications for mentions in background
+    const mentionedUsers = extractMentions(newReflection.content.trim());
+    if (mentionedUsers.length > 0) {
+      const boardUrl = `${window.location.origin}/board/${board.id}`;
+      mentionedUsers.forEach((mentionedUser) => {
+        notificationService.notifyMentioned({
+          mentionedEmail: mentionedUser.email,
+          mentionedName: mentionedUser.name,
+          mentionedBy: user.displayName || user.email || 'Unknown User',
+          boardName: board.name,
+          context: 'reflection',
+          message: `${user.displayName || user.email} mentioned you in a reflection: "${newReflection.content.trim()}"`,
+          boardUrl,
+        });
+      });
+      console.log(`Reflection mention notifications queued for ${mentionedUsers.length} user(s)`);
+    }
   };
 
   const handleDeleteReflection = (
@@ -589,6 +619,24 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     });
 
     setCommentTexts({ ...commentTexts, [itemId]: "" });
+
+    // Send notifications for mentions in comments in background
+    const mentionedUsers = extractMentions(commentText);
+    if (mentionedUsers.length > 0) {
+      const boardUrl = `${window.location.origin}/board/${board.id}`;
+      mentionedUsers.forEach((mentionedUser) => {
+        notificationService.notifyMentioned({
+          mentionedEmail: mentionedUser.email,
+          mentionedName: mentionedUser.name,
+          mentionedBy: user.displayName || user.email || 'Unknown User',
+          boardName: board.name,
+          context: 'reflection',
+          message: `${user.displayName || user.email} mentioned you in a reflection comment: "${commentText}"`,
+          boardUrl,
+        });
+      });
+      console.log(`Reflection comment mention notifications queued for ${mentionedUsers.length} user(s)`);
+    }
   };
 
   const handleLikeComment = (

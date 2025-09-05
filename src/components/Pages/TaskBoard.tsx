@@ -51,6 +51,7 @@ import CreateTaskForm from "../Forms/CreateTaskForm";
 import ConfirmModal from "../Atoms/ConfirmModal";
 import ErrorModal from "../Atoms/ErrorModal";
 import { useNavigate } from "react-router-dom";
+import { notificationService } from "../../services/notificationService";
 import FilterSection from "../Atoms/Filter";
 
 interface TaskBoardProps {
@@ -436,6 +437,18 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         ).unwrap();
 
         dispatch(updateCurrentBoardCollaborators(updatedCollaborators));
+
+        // Send notification email in background
+        const boardUrl = `${window.location.origin}/board/${boardId}`;
+        notificationService.notifyCollaboratorAdded({
+          collaboratorEmail: email,
+          collaboratorName: name,
+          boardName: currentBoard.title,
+          addedBy: user.displayName || user.email || 'Unknown User',
+          boardUrl,
+        });
+        console.log('Collaborator notification queued for sending');
+
         setNewCollaborator("");
         setNewCollaboratorName("");
       } catch (error) {

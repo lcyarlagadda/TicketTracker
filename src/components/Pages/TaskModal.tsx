@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
+import { notificationService } from "../../services/notificationService";
 import {
   updateTask,
   createTask,
@@ -631,6 +632,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
             updates,
           })
         ).unwrap();
+
+        // Send notification if task was assigned to someone new
+        if (updates.assignedTo && updates.assignedTo.email !== user.email) {
+          const taskUrl = `${window.location.origin}/board/${currentBoard.id}`;
+          const boardUrl = `${window.location.origin}/board/${currentBoard.id}`;
+          
+          notificationService.notifyTaskAssigned({
+            assigneeEmail: updates.assignedTo.email,
+            assigneeName: updates.assignedTo.name,
+            taskTitle: title,
+            boardName: currentBoard.name,
+            assignedBy: user.displayName || user.email || 'Unknown User',
+            taskUrl,
+            boardUrl,
+            taskId: task.id,
+          });
+          console.log('Task assignment notification queued for sending');
+        }
       }
 
       setUnsavedChanges(false);

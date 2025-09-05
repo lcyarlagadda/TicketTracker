@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, X, Trash2, Users, Calendar, CheckCircle, AlertCircle, Target, ThumbsUp, ThumbsDown, Settings, MessageCircle, Send, AtSign, Hash } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../hooks/redux';
+import { notificationService } from '../../../services/notificationService';
 import { updateBoard } from '../../../store/slices/boardSlice';
 import { Task, Board, Collaborator, Sprint, EnhancedRetroItem, NewItemForm, SprintRetroData, RetroComment, MentionTask, MentionUser } from '../../../store/types/types';
 import { useParams } from 'react-router-dom';
@@ -569,6 +570,17 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     }));
   }, [tasks]);
 
+  // Helper function to extract mentions from text
+  const extractMentions = (text: string): MentionUser[] => {
+    const mentionMatches = text.match(/@(\w+)/g);
+    if (!mentionMatches) return [];
+    
+    return mentionMatches
+      .map(match => match.slice(1)) // Remove @ symbol
+      .map(username => mentionUsers.find(user => user.name === username))
+      .filter((user): user is MentionUser => user !== undefined);
+  };
+
   // Fetch sprint data
   useEffect(() => {
     const fetchSprintData = async () => {
@@ -694,6 +706,24 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     setRetroItems([...retroItems, item]);
     setNewItem({ type: 'went-well', content: '', assignedTo: '', dueDate: '', priority: 'Medium' });
     setShowAddForm({ ...showAddForm, [type]: false });
+
+    // Send notifications for mentions in background
+    const mentionedUsers = extractMentions(newItem.content.trim());
+    if (mentionedUsers.length > 0) {
+      const boardUrl = `${window.location.origin}/board/${board.id}`;
+      mentionedUsers.forEach((mentionedUser) => {
+        notificationService.notifyMentioned({
+          mentionedEmail: mentionedUser.email,
+          mentionedName: mentionedUser.name,
+          mentionedBy: user.displayName || user.email || 'Unknown User',
+          boardName: board.name,
+          context: 'retrospective',
+          message: `${user.displayName || user.email} mentioned you in a retrospective item: "${newItem.content.trim()}"`,
+          boardUrl,
+        });
+      });
+      console.log(`Retrospective mention notifications queued for ${mentionedUsers.length} user(s)`);
+    }
   };
 
   const handleVote = (itemId: number): void => {
@@ -740,6 +770,24 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     ));
 
     setCommentTexts({ ...commentTexts, [itemId]: '' });
+
+    // Send notifications for mentions in comments in background
+    const mentionedUsers = extractMentions(commentText);
+    if (mentionedUsers.length > 0) {
+      const boardUrl = `${window.location.origin}/board/${board.id}`;
+      mentionedUsers.forEach((mentionedUser) => {
+        notificationService.notifyMentioned({
+          mentionedEmail: mentionedUser.email,
+          mentionedName: mentionedUser.name,
+          mentionedBy: user.displayName || user.email || 'Unknown User',
+          boardName: board.name,
+          context: 'retrospective',
+          message: `${user.displayName || user.email} mentioned you in a retrospective comment: "${commentText}"`,
+          boardUrl,
+        });
+      });
+      console.log(`Retrospective comment mention notifications queued for ${mentionedUsers.length} user(s)`);
+    }
   };
 
   const handleLikeComment = (itemId: number, commentId: string): void => {
