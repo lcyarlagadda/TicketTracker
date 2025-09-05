@@ -112,7 +112,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
   const formCapacity = useMemo(() => {
     const selectedTasksPoints = tasks
       .filter(task => selectedTasks.includes(task.id))
-      .reduce((sum, task) => sum + (task.points || 0), 0);
+      .reduce((sum, task) => sum + (task.points !== null && task.points !== undefined ? task.points : 0), 0);
 
     const totalCapacity = sprintForm.teamCapacityPerWeek * (sprintForm.duration / 7);
     const holidayDays = sprintForm.holidays.length;
@@ -232,24 +232,6 @@ const SprintModal: React.FC<SprintModalProps> = ({
                  isCompletedSprint ? 'View completed sprint (read-only)' : 
                  'Plan capacity and assign tasks'}
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${
-                saveStatus === 'saving' ? 'bg-yellow-500 animate-pulse' :
-                saveStatus === 'saved' ? 'bg-green-500' : 
-                saveStatus === 'error' ? 'bg-red-500' : 'bg-slate-300'
-              }`}></div>
-              <span className="text-sm text-slate-600">
-                {saveStatus === 'saving' ? 'Saving...' :
-                 saveStatus === 'saved' ? 'Saved' :
-                 saveStatus === 'error' ? 'Error' : 'Ready'}
-              </span>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
             </div>
           </div>
 

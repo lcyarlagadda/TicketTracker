@@ -32,6 +32,7 @@ import {
   Zap,
   AlertTriangle,
   CheckCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   Task,
@@ -60,10 +61,15 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     | "cycle-time"
     | "completion-trends"
   >("velocity");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Get task points
   const getTaskPoints = (task: Task): number => {
-    if ((task as any).points) return (task as any).points;
+    // Use explicit story points if available
+    if (task.points !== null && task.points !== undefined) {
+      return task.points;
+    }
+    // Fallback to priority-based points
     return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
   };
 
@@ -175,7 +181,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         };
       })
       .sort((a, b) => b.pointsCompleted - a.pointsCompleted);
-  }, [tasks, timeRange]);
+  }, [tasks, timeRange, refreshKey]);
 
   // Enhanced velocity data with predictions
   const velocityData = useMemo((): EnhancedVelocityData[] => {
@@ -223,7 +229,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange, contributorMetrics]);
+  }, [tasks, timeRange, contributorMetrics, refreshKey]);
 
   // Cycle time distribution data
   const cycleTimeData = useMemo(() => {
@@ -271,7 +277,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       count,
       percentage: Math.round((count / completedTasks.length) * 100),
     }));
-  }, [tasks]);
+  }, [tasks, refreshKey]);
 
   // Task completion trends
   const completionTrendsData = useMemo(() => {
@@ -316,7 +322,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange]);
+  }, [tasks, timeRange, refreshKey]);
 
   // Current sprint tasks
   const currentSprintTasks = useMemo(() => {
@@ -598,6 +604,14 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setRefreshKey(prev => prev + 1)}
+              className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+              title="Refresh analytics data"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
             {(["7d", "30d", "90d"] as const).map((range) => (
               <button
                 key={range}

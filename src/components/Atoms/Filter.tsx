@@ -88,6 +88,25 @@ const FilterSection: React.FC<FilterSectionProps> = ({
                 Assigned To
               </label>
               <div className="space-y-2 max-h-32 overflow-y-auto">
+                {/* Unassigned filter option */}
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedAssignees.includes('Unassigned')}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedAssignees([...selectedAssignees, 'Unassigned']);
+                      } else {
+                        setSelectedAssignees(selectedAssignees.filter(a => a !== 'Unassigned'));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-slate-600 px-2 py-1 bg-gray-100 rounded-lg text-xs border border-gray-200">
+                    Unassigned
+                  </span>
+                </label>
+                
                 {uniqueAssignees.map(assignee => (
                   <label key={assignee} className="flex items-center gap-2 text-sm">
                     <input

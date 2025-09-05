@@ -227,6 +227,7 @@ const BoardList: React.FC = () => {
         <TaskModal
           task={selectedTask}
           onClose={() => dispatch(setSelectedTask(null))}
+          existingTasks={allTasks}
         />
       )}
       

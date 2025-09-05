@@ -127,16 +127,12 @@ class SprintService {
         batch.update(taskRef, { sprintId });
       }
       
-      // Update sprint with task IDs and recalculate story points
+      // Update sprint with task IDs only (no static story points)
       const sprintRef = doc(db, 'users', userId, 'boards', boardId, 'sprints', sprintId);
       
-      // Fetch tasks to calculate total story points
-      const tasks = await this.fetchTasksByIds(userId, boardId, taskIds);
-      const totalStoryPoints = tasks.reduce((sum, task) => sum + (task.points || 0), 0);
-      
       batch.update(sprintRef, { 
-        taskIds, 
-        totalStoryPoints 
+        taskIds
+        // Removed totalStoryPoints - will be calculated in real-time
       });
       
       await batch.commit();
@@ -220,7 +216,7 @@ class SprintService {
       // Calculate actual velocity
       const tasks = await this.fetchSprintTasks(userId, boardId, sprintId);
       const completedTasks = tasks.filter(t => t.status === 'done' || t.status === 'Done');
-      const actualVelocity = completedTasks.reduce((sum, task) => sum + (task.points || 0), 0);
+      const actualVelocity = completedTasks.reduce((sum, task) => sum + (task.points !== null && task.points !== undefined ? task.points : 0), 0);
       
       // Calculate completion rate
       const totalTasks = tasks.length;
@@ -288,6 +284,7 @@ async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promi
       callback(sprints);
     });
   }
+
 
   // Calculate sprint capacity
   calculateSprintCapacity(

@@ -612,7 +612,12 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.status === 'Done' || t.status === 'done').length;
     const getTaskPoints = (task: Task): number => {
-      return task.points || 0;
+      // Use explicit story points if available
+      if (task.points !== null && task.points !== undefined) {
+        return task.points;
+      }
+      // Fallback to priority-based points
+      return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
     };
     
     const totalPoints = tasks.reduce((sum, t) => sum + getTaskPoints(t), 0);
@@ -707,22 +712,26 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     setNewItem({ type: 'went-well', content: '', assignedTo: '', dueDate: '', priority: 'Medium' });
     setShowAddForm({ ...showAddForm, [type]: false });
 
-    // Send notifications for mentions in background
+    // Send notifications for mentions
     const mentionedUsers = extractMentions(newItem.content.trim());
     if (mentionedUsers.length > 0) {
-      const boardUrl = `${window.location.origin}/board/${board.id}`;
-      mentionedUsers.forEach((mentionedUser) => {
-        notificationService.notifyMentioned({
-          mentionedEmail: mentionedUser.email,
-          mentionedName: mentionedUser.name,
-          mentionedBy: user.displayName || user.email || 'Unknown User',
-          boardName: board.name,
-          context: 'retrospective',
-          message: `${user.displayName || user.email} mentioned you in a retrospective item: "${newItem.content.trim()}"`,
-          boardUrl,
-        });
+      mentionedUsers.forEach(async (mentionedUser) => {
+        try {
+          const boardUrl = `${window.location.origin}/board/${board.id}`;
+          await notificationService.notifyMentioned({
+            mentionedEmail: mentionedUser.email,
+            mentionedName: mentionedUser.name,
+            mentionedBy: user.displayName || user.email || 'Unknown User',
+            boardName: board.name,
+            context: 'retrospective',
+            message: `${user.displayName || user.email} mentioned you in a retrospective item: "${newItem.content.trim()}"`,
+            boardUrl,
+          });
+          console.log('Retrospective mention notification sent successfully');
+        } catch (notificationError) {
+          console.error('Failed to send retrospective mention notification:', notificationError);
+        }
       });
-      console.log(`Retrospective mention notifications queued for ${mentionedUsers.length} user(s)`);
     }
   };
 
@@ -771,22 +780,26 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
 
     setCommentTexts({ ...commentTexts, [itemId]: '' });
 
-    // Send notifications for mentions in comments in background
+    // Send notifications for mentions in comments
     const mentionedUsers = extractMentions(commentText);
     if (mentionedUsers.length > 0) {
-      const boardUrl = `${window.location.origin}/board/${board.id}`;
-      mentionedUsers.forEach((mentionedUser) => {
-        notificationService.notifyMentioned({
-          mentionedEmail: mentionedUser.email,
-          mentionedName: mentionedUser.name,
-          mentionedBy: user.displayName || user.email || 'Unknown User',
-          boardName: board.name,
-          context: 'retrospective',
-          message: `${user.displayName || user.email} mentioned you in a retrospective comment: "${commentText}"`,
-          boardUrl,
-        });
+      mentionedUsers.forEach(async (mentionedUser) => {
+        try {
+          const boardUrl = `${window.location.origin}/board/${board.id}`;
+          await notificationService.notifyMentioned({
+            mentionedEmail: mentionedUser.email,
+            mentionedName: mentionedUser.name,
+            mentionedBy: user.displayName || user.email || 'Unknown User',
+            boardName: board.title,
+            context: 'retrospective',
+            message: `${user.displayName || user.email} mentioned you in a retrospective comment: "${commentText}"`,
+            boardUrl,
+          });
+          console.log('Retrospective comment mention notification sent successfully');
+        } catch (notificationError) {
+          console.error('Failed to send retrospective comment mention notification:', notificationError);
+        }
       });
-      console.log(`Retrospective comment mention notifications queued for ${mentionedUsers.length} user(s)`);
     }
   };
 
@@ -1240,6 +1253,7 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
             setSelectedTask(null);
             setShowTaskModal(false);
           }}
+          existingTasks={tasks}
         />
       )}
     </div>

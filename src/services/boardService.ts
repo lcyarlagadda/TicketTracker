@@ -19,15 +19,63 @@ import { db, storage } from '../firebase';
 import { Board } from '../store/types/types';
 
 class BoardService {
-  // Fetch all boards for a user
-  async fetchUserBoards(userId: string): Promise<Board[]> {
+  // Fetch all boards for a user (owned + shared)
+  async fetchUserBoards(userId: string, userEmail?: string): Promise<Board[]> {
     try {
-      const boardsQuery = query(
+      // Fetch owned boards
+      const ownedBoardsQuery = query(
         collection(db, 'users', userId, 'boards'),
         orderBy('createdAt', 'desc')
       );
-      const snapshot = await getDocs(boardsQuery);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Board));
+      const ownedSnapshot = await getDocs(ownedBoardsQuery);
+      const ownedBoards = ownedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Board));
+
+      // Fetch shared boards if user email is provided
+      let sharedBoards: Board[] = [];
+      if (userEmail) {
+        const sharedBoardsQuery = query(
+          collection(db, 'sharedBoards'),
+          orderBy('sharedAt', 'desc')
+        );
+        const sharedSnapshot = await getDocs(sharedBoardsQuery);
+        
+        // Filter shared boards for this user's email
+        const userSharedRefs = sharedSnapshot.docs
+          .map(doc => doc.data())
+          .filter(ref => ref.collaboratorEmail === userEmail);
+        
+        // Fetch actual board data for shared boards
+        const sharedBoardsWithNulls = await Promise.all(
+          userSharedRefs.map(async (ref) => {
+            try {
+              const boardDoc = await getDoc(doc(db, 'users', ref.ownerId, 'boards', ref.boardId));
+              if (boardDoc.exists()) {
+                return { id: boardDoc.id, ...boardDoc.data() } as Board;
+              }
+            } catch (error) {
+              console.error('Error fetching shared board:', error);
+            }
+            return null;
+          })
+        );
+        
+        // Filter out null values
+        sharedBoards = sharedBoardsWithNulls.filter(board => board !== null) as Board[];
+      }
+
+      // Combine and deduplicate boards
+      const allBoards = [...ownedBoards];
+      sharedBoards.forEach(sharedBoard => {
+        if (!allBoards.find(board => board.id === sharedBoard.id)) {
+          allBoards.push(sharedBoard);
+        }
+      });
+
+      return allBoards.sort((a, b) => {
+        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt);
+        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        return bTime.getTime() - aTime.getTime();
+      });
     } catch (error) {
       console.error('Error fetching boards:', error);
       throw error;
@@ -102,10 +150,51 @@ async createBoard(userId: string, boardData: Omit<Board, 'id'>): Promise<Board> 
     }
   }
 
+  // Share board with collaborator (simplified approach)
+  async shareBoardWithCollaborator(ownerId: string, boardId: string, collaboratorEmail: string): Promise<void> {
+    try {
+      // For now, we'll create a global shared boards collection
+      // This allows collaborators to find boards shared with them by email
+      await setDoc(doc(db, 'sharedBoards', `${boardId}_${collaboratorEmail.replace(/[^a-zA-Z0-9]/g, '_')}`), {
+        boardId,
+        ownerId,
+        collaboratorEmail,
+        sharedAt: serverTimestamp(),
+        sharedBy: ownerId
+      });
+    } catch (error) {
+      console.error('Error sharing board:', error);
+      throw error;
+    }
+  }
+
+  // Remove board sharing with collaborator
+  async unshareBoardWithCollaborator(collaboratorEmail: string, boardId: string): Promise<void> {
+    try {
+      // Remove from global shared boards collection
+      await deleteDoc(doc(db, 'sharedBoards', `${boardId}_${collaboratorEmail.replace(/[^a-zA-Z0-9]/g, '_')}`));
+    } catch (error) {
+      console.error('Error unsharing board:', error);
+      throw error;
+    }
+  }
+
   // Delete board
   async deleteBoard(userId: string, boardId: string): Promise<void> {
     try {
-      // TODO: Also delete all tasks in the board
+      // Get board data to find collaborators
+      const boardDoc = await getDoc(doc(db, 'users', userId, 'boards', boardId));
+      if (boardDoc.exists()) {
+        const board = boardDoc.data() as Board;
+        
+        // Remove shared board references for all collaborators
+        const unsharePromises = board.collaborators.map(collaborator => 
+          this.unshareBoardWithCollaborator(collaborator.email, boardId)
+        );
+        await Promise.all(unsharePromises);
+      }
+      
+      // Delete the board
       await deleteDoc(doc(db, 'users', userId, 'boards', boardId));
     } catch (error) {
       console.error('Error deleting board:', error);

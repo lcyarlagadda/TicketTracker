@@ -168,7 +168,7 @@ const CreateBoardForm: React.FC<CreateBoardFormProps> = ({ onSubmit, onCancel, l
 
     setFormState(prev => ({
       ...prev,
-      collaborators: [...prev.collaborators, { name, email }],
+      collaborators: [...prev.collaborators, { name, email, role: 'user' as const }],
       nameInput: '',
       emailInput: '',
     }));
@@ -238,14 +238,21 @@ const CreateBoardForm: React.FC<CreateBoardFormProps> = ({ onSubmit, onCancel, l
 
     const { title, category, tags, imageFile, collaborators, description } = formState;
 
-    // Automatically include current user as a collaborator
+    // Automatically include current user as admin collaborator
     const updatedCollaborators = [...collaborators];
     if (user && !collaborators.some(c => c.email === user.email)) {
       updatedCollaborators.push({
         name: user.displayName || user.email || 'Current User',
-        email: user.email || ''
+        email: user.email || '',
+        role: 'admin' as const
       });
     }
+
+    // Set default role as 'user' for other collaborators
+    const collaboratorsWithRoles = updatedCollaborators.map(collab => ({
+      ...collab,
+      role: collab.role || 'user' as const
+    }));
 
     const boardData: Omit<Board, 'id'> = {
       title: title.trim(),
@@ -258,7 +265,7 @@ const CreateBoardForm: React.FC<CreateBoardFormProps> = ({ onSubmit, onCancel, l
         email: user?.email || '',
         name: user?.displayName || user?.email || '',
       },
-      collaborators: updatedCollaborators,
+      collaborators: collaboratorsWithRoles,
       statuses: ['todo', 'inprogress', 'done'],
       createdAt: new Date(),
       imageFile: imageFile || undefined,

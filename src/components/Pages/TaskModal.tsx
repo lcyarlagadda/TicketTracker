@@ -53,9 +53,10 @@ interface TaskModalProps {
   task: Task;
   onClose: () => void;
   sprints?: Sprint[];
+  existingTasks?: Task[];
 }
 
-const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) => {
+const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], existingTasks = [] }) => {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const { currentBoard } = useAppSelector((state) => state.boards);
@@ -65,14 +66,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
   // Form state - all directly editable with unified save
   const [title, setTitle] = useState(task.title || "");
   const [priority, setPriority] = useState(task.priority || "Medium");
-  const [points, setPoints] = useState(task.points || 3);
+  const [points, setPoints] = useState(task.points !== null && task.points !== undefined ? task.points : null);
   const [taskType, setTaskType] = useState(task.type || "story");
   const [description, setDescription] = useState(task.description || "");
   const [assignedTo, setAssignedTo] = useState(task.assignedTo?.name || "");
   const [dueDate, setDueDate] = useState(task.dueDate || "");
   const [epics, setEpics] = useState<string[]>(task.epics || []);
-  const [newEpic, setNewEpic] = useState("");
-  const [showEpicInput, setShowEpicInput] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -123,7 +122,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     const hasChanges = 
       title !== (task.title || "") ||
       priority !== (task.priority || "Medium") ||
-      points !== (task.points || 3) ||
+      points !== (task.points !== null && task.points !== undefined ? task.points : null) ||
       taskType !== (task.type || "story") ||
       description !== (task.description || "") ||
       assignedTo !== (task.assignedTo?.name || "") ||
@@ -204,6 +203,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       border: 'border-gray-200',
       label: 'Subtask'
     },
+    poc: { 
+      bg: 'bg-purple-100',
+      text: 'text-purple-700',
+      border: 'border-purple-200',
+      label: 'POC'
+    },
   };
 
   const typeConfig = taskTypeConfig[taskType as keyof typeof taskTypeConfig] || taskTypeConfig.story;
@@ -266,31 +271,15 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
   };
 
   // Epic management functions
-  const handleAddEpic = () => {
-    const epicName = newEpic.trim();
-    if (!epicName) {
-      setErrorMessage("Epic name cannot be empty.");
-      return;
-    }
-
-    if (epics.includes(epicName)) {
-      setErrorMessage("This epic is already added.");
-      return;
-    }
-
-    if (epics.length >= 3) {
-      setErrorMessage("Maximum 3 epics allowed per task.");
-      return;
-    }
-
-    setEpics(prev => [...prev, epicName]);
-    setNewEpic("");
-    setShowEpicInput(false);
-  };
 
   const handleRemoveEpic = (epicToRemove: string) => {
     setEpics(prev => prev.filter(epic => epic !== epicToRemove));
   };
+
+  // Get epic-type tasks from the board
+  const epicTasks = existingTasks
+    .filter(existingTask => existingTask.type === 'epic' && existingTask.id !== task.id) // Exclude current task
+    .sort((a, b) => a.title.localeCompare(b.title));
 
   // Child task functions (keeping existing implementation)
   const handleAddChildTask = async () => {
@@ -510,16 +499,18 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       }
 
       // Check for points changes
-      if (points !== task.points) {
-        const pointsError = validatePoints(points);
-        if (pointsError) {
-          setErrorMessage(pointsError);
-          return;
+      if (points !== (task.points !== null && task.points !== undefined ? task.points : null)) {
+        if (points !== null) {
+          const pointsError = validatePoints(points);
+          if (pointsError) {
+            setErrorMessage(pointsError);
+            return;
+          }
         }
         updates.points = points;
         newLogEntries.push({
           type: "points-change" as const,
-          desc: `Story points changed from ${task.points || 'not set'} to ${points}`,
+          desc: `Story points changed from ${task.points || 'not set'} to ${points || 'not set'}`,
           timestamp: Timestamp.now(),
           user: user.displayName || user.email,
         });
@@ -635,20 +626,25 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
 
         // Send notification if task was assigned to someone new
         if (updates.assignedTo && updates.assignedTo.email !== user.email) {
-          const taskUrl = `${window.location.origin}/board/${currentBoard.id}`;
-          const boardUrl = `${window.location.origin}/board/${currentBoard.id}`;
-          
-          notificationService.notifyTaskAssigned({
-            assigneeEmail: updates.assignedTo.email,
-            assigneeName: updates.assignedTo.name,
-            taskTitle: title,
-            boardName: currentBoard.name,
-            assignedBy: user.displayName || user.email || 'Unknown User',
-            taskUrl,
-            boardUrl,
-            taskId: task.id,
-          });
-          console.log('Task assignment notification queued for sending');
+          try {
+            const taskUrl = `${window.location.origin}/board/${currentBoard.id}`;
+            const boardUrl = `${window.location.origin}/board/${currentBoard.id}`;
+            
+            await notificationService.notifyTaskAssigned({
+              assigneeEmail: updates.assignedTo.email,
+              assigneeName: updates.assignedTo.name,
+              taskTitle: title,
+              boardName: currentBoard.title,
+              assignedBy: user.displayName || user.email || 'Unknown User',
+              taskUrl,
+              boardUrl,
+              taskId: task.id,
+            });
+            console.log('Task assignment notification sent successfully');
+          } catch (notificationError) {
+            console.error('Failed to send task assignment notification:', notificationError);
+            // Don't show error to user as the task was still updated successfully
+          }
         }
       }
 
@@ -704,13 +700,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
 
   const progress = getChildTasksProgress();
 
-  // Story point options (Fibonacci sequence)
-  const storyPointOptions = ['1', '2', '3', '5', '8', '13', '21'];
+  // Story point options (Fibonacci sequence) with "No Points" option
+  const storyPointOptions = ['No Points', '1', '2', '3', '5', '8', '13', '21'];
 
   // Task type options
   const taskTypeOptions = task.parentTaskId 
     ? ["subtask"]
-    : ["epic", "feature", "story", "bug", "enhancement"];
+    : ["epic", "feature", "story", "bug", "enhancement", "poc"];
 
   return (
     <div
@@ -900,8 +896,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
               </div>
               <CustomDropdown
                 options={storyPointOptions}
-                selected={points.toString()}
-                setSelected={(val) => setPoints(parseInt(val))}
+                selected={points ? points.toString() : "No Points"}
+                setSelected={(val) => setPoints(val === "No Points" ? null : parseInt(val))}
                 placeholder="Points"
                 className="w-full"
               />
@@ -970,34 +966,26 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
 
           {/* Epics Section */}
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-purple-100">
-                  <Crown size={18} className="text-purple-600" />
-                </div>
-                <h3 className="font-semibold text-slate-800">Epics</h3>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-purple-100">
+                <Crown size={18} className="text-purple-600" />
               </div>
-              <button
-                onClick={() => setShowEpicInput(!showEpicInput)}
-                className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                title="Add Epic"
-              >
-                {showEpicInput ? <X size={16} /> : <Plus size={16}/>}
-              </button>
+              <h3 className="font-semibold text-slate-800">Epic Relations</h3>
             </div>
 
+            {/* Selected Epic Tasks */}
             {epics.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-3">
-                {epics.map((epic, index) => (
+                {epics.map((epicName) => (
                   <span
-                    key={index}
+                    key={epicName}
                     className="flex items-center gap-2 text-sm text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-3 py-1"
                   >
-                    {epic}
+                    {epicName}
                     <button
-                      onClick={() => handleRemoveEpic(epic)}
+                      onClick={() => handleRemoveEpic(epicName)}
                       className="hover:bg-purple-200 rounded-full p-1 transition-colors"
-                      title="Remove epic"
+                      title="Remove epic relation"
                     >
                       <X size={12} />
                     </button>
@@ -1006,47 +994,48 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
               </div>
             )}
 
-            {showEpicInput && (
-              <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newEpic}
-                    onChange={(e) => setNewEpic(e.target.value)}
-                    placeholder="Enter epic name"
-                    className="flex-1 border-2 border-purple-200 rounded-lg px-3 py-2 text-sm focus:border-purple-500 focus:outline-none transition-colors"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddEpic();
-                      }
-                      if (e.key === "Escape") {
-                        setShowEpicInput(false);
-                        setNewEpic("");
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={handleAddEpic}
-                    className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                  >
-                    Add
-                  </button>
+            {/* Epic Tasks Dropdown - Multi-select for epic-type tasks */}
+            {epicTasks.length > 0 && (
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 mb-3">
+                <p className="text-xs font-medium text-purple-600 mb-3">Select epic tasks to relate:</p>
+                <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-100">
+                  {epicTasks.map((epicTask) => (
+                    <label key={epicTask.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-purple-100 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={epics.includes(epicTask.title)}
+                        onChange={(e) => {
+                          if (e.target.checked && epics.length < 3) {
+                            setEpics(prev => [...prev, epicTask.title]);
+                          } else if (!e.target.checked) {
+                            setEpics(prev => prev.filter(name => name !== epicTask.title));
+                          }
+                        }}
+                        className="w-4 h-4 text-purple-600 border-purple-300 rounded focus:ring-purple-500"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-slate-700">{epicTask.title}</span>
+                        {epicTask.description && (
+                          <p className="text-xs text-slate-500 truncate">{epicTask.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
                 </div>
-                
-                <p className="text-xs text-purple-600">
-                  {epics.length}/3 epics (helps organize work into larger initiatives)
-                </p>
               </div>
             )}
 
-            {epics.length === 0 && !showEpicInput && (
-              <div className="border-2 border-dashed border-purple-200 rounded-xl p-4 text-center text-purple-600">
-                <Crown size={24} className="mx-auto mb-2 text-purple-400" />
-                <p className="text-sm">No epics assigned</p>
-                <p className="text-xs text-purple-500 mt-1">Add epics to organize this task</p>
+            {epicTasks.length === 0 && (
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 text-center">
+                <p className="text-xs text-purple-600">No epics on this board.</p>
               </div>
             )}
+
+            {/* Info Text */}
+            <p className="text-xs text-purple-600 mt-2">
+              {epics.length}/3 epic relations (connect tasks to epic-type tasks)
+            </p>
+
           </div>
 
           {/* Child Tasks Section */}

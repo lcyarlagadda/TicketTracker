@@ -6,9 +6,27 @@ export interface User {
   emailVerified?: boolean;
 }
 
+export type BoardRole = 'admin' | 'manager' | 'user';
+
 export interface Collaborator {
   name: string;
   email: string;
+  role: BoardRole;
+}
+
+export interface BoardPermissions {
+  canManageColumns: boolean;
+  canManageCollaborators: boolean;
+  canManageSprints: boolean;
+  canGiveManagerReviews: boolean;
+  canDeleteBoard: boolean;
+  canEditBoardSettings: boolean;
+}
+
+export interface UserBoardRole {
+  userId: string;
+  role: BoardRole;
+  permissions: BoardPermissions;
 }
 
 export interface Board {
@@ -188,7 +206,7 @@ export interface Task {
   type: TaskType;
 }
 
-export type TaskType =  'epic' | 'feature' | 'story' | 'bug' | 'enhancemnet' | 'subtask';
+export type TaskType =  'epic' | 'feature' | 'story' | 'bug' | 'enhancement' | 'subtask' | 'poc';
 
 export interface CalendarTask extends Task {
   isSubtask?: boolean;

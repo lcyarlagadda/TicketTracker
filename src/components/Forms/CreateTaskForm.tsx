@@ -40,18 +40,16 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
     title: "",
     description: "",
     priority: "Medium" as "Low" | "Medium" | "High",
-    points: 3, // Default to 3 story points
+    points: null as number | null, // Optional story points
     dueDate: "",
     epics: [] as string[],
     assignedTo: "",
-    taskStatus: "",
+    taskStatus: "todo",
     sprintId: "",
     sprintName: "Backlog",
-    type: isSubtask ? "subtask" : "story" as "epic" | "feature" | "story" | "bug" | "enhancement" | "subtask",
+    type: isSubtask ? "subtask" : "story" as "epic" | "feature" | "story" | "bug" | "enhancement" | "subtask" | "poc",
   });
 
-  const [newEpic, setNewEpic] = useState("");
-  const [showEpicInput, setShowEpicInput] = useState(false);
 
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({
@@ -64,14 +62,10 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
     type: "",
   });
 
-  // Get existing epics from all tasks
-  const existingEpics = Array.from(
-    new Set(
-      existingTasks
-        .filter(task => task.epics && task.epics.length > 0)
-        .flatMap(task => task.epics || [])
-    )
-  ).sort();
+  // Get epic-type tasks from the board
+  const epicTasks = existingTasks
+    .filter(task => task.type === 'epic')
+    .sort((a, b) => a.title.localeCompare(b.title));
 
   const validateField = (name: string, value: string | number) => {
     let error = "";
@@ -98,7 +92,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
         }
         break;
       case "points":
-        if (typeof value === "number") {
+        if (typeof value === "number" && value !== null) {
           if (value < 1 || value > 100) {
             error = "Story points must be between 1 and 100";
           }
@@ -106,9 +100,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
         break;
       case "dueDate":
         if (typeof value === "string") {
-          if (!value) {
-            error = "Due date is required";
-          } else {
+          if (value) {
             const selectedDate = new Date(value);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -140,7 +132,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
         break;
       case "type":
         if (typeof value === "string") {
-          const validTypes = ["epic", "feature", "story", "bug", "enhancement", "subtask"];
+          const validTypes = ["epic", "feature", "story", "bug", "enhancement", "subtask", "poc"];
           if (!validTypes.includes(value)) {
             error = "Invalid task type selected";
           }
@@ -171,9 +163,11 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
 
   const handleDropdownChange = (field: string, value: string) => {
     if (field === "points") {
-      const pointsValue = parseInt(value);
+      const pointsValue = value === "" ? null : parseInt(value);
       setForm((prev) => ({ ...prev, [field]: pointsValue }));
-      validateField(field, pointsValue);
+      if (pointsValue !== null) {
+        validateField(field, pointsValue);
+      }
     } else {
       setForm((prev) => ({ ...prev, [field]: value }));
       if (["taskStatus", "sprintId", "type"].includes(field)) {
@@ -182,27 +176,6 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
     }
   };
 
-  const handleAddEpic = () => {
-    const epicName = newEpic.trim();
-    if (!epicName) return;
-
-    if (form.epics.includes(epicName)) {
-      setError("This epic is already added.");
-      return;
-    }
-
-    if (form.epics.length >= 3) {
-      setError("Maximum 3 epics allowed per task.");
-      return;
-    }
-
-    setForm(prev => ({
-      ...prev,
-      epics: [...prev.epics, epicName]
-    }));
-    setNewEpic("");
-    setShowEpicInput(false);
-  };
 
   const handleRemoveEpic = (epicToRemove: string) => {
     setForm(prev => ({
@@ -216,17 +189,13 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
 
     // Validate all required fields
     const titleValid = validateField("title", title);
-    const dueDateValid = validateField("dueDate", dueDate);
     const statusValid = validateField("taskStatus", taskStatus);
-    const pointsValid = validateField("points", points);
     const sprintValid = validateField("sprintId", sprintId);
     const typeValid = validateField("type", type);
 
     if (
       !titleValid ||
-      !dueDateValid ||
       !statusValid ||
-      !pointsValid ||
       !sprintValid ||
       !typeValid
     ) {
@@ -268,7 +237,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
       title: title.trim(),
       description: description.trim(),
       priority,
-      dueDate,
+      dueDate: dueDate || "",
       status: taskStatus,
       epics: epics,
       assignedTo: assignedTo && assignedTo !== "Unassigned" 
@@ -284,7 +253,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
         email: "",
         name: "",
       },
-      points,
+      points: points || null,
       progressLog: [],
       comments: [],
       files: [],
@@ -307,13 +276,13 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
     ...board.collaborators.map((c) => c.name),
   ];
 
-  // Common story point values (Fibonacci sequence)
-  const storyPointOptions = ["1", "2", "3", "5", "8", "13", "21"];
+  // Common story point values (Fibonacci sequence) with "No Points" option
+  const storyPointOptions = ["", "1", "2", "3", "5", "8", "13", "21"];
 
   // Task type options
   const taskTypeOptions = isSubtask 
     ? ["subtask"]
-    : ["epic", "feature", "story", "bug", "enhancement"];
+    : ["epic", "feature", "story", "bug", "enhancement", "poc"];
 
   // Sprint options - only show active and planning sprints
   const sprintOptions = [
@@ -420,14 +389,14 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               <Hash size={16} className="inline mr-2" />
-              Story Points *
+              Story Points
             </label>
             <div className="h-12">
               <CustomDropdown
-                options={storyPointOptions}
-                selected={form.points.toString()}
-                setSelected={(val) => handleDropdownChange("points", val)}
-                placeholder="Select points"
+                options={["No Points", "1", "2", "3", "5", "8", "13", "21"]}
+                selected={form.points ? form.points?.toString() : "No Points"}
+                setSelected={(val) => handleDropdownChange("points", val === "No Points" ? "" : val)}
+                placeholder="Select points (optional)"
                 className="w-full h-full"
               />
             </div>
@@ -527,7 +496,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               <Calendar size={16} className="inline mr-2" />
-              Due Date *
+              Due Date
             </label>
             <input
               type="date"
@@ -547,34 +516,25 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
           </div>
         </div>
 
-        {/* Epics Row */}
+        {/* Epic Relations Row */}
         <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              <Crown size={16} className="inline mr-2" />
-              Epics (Optional)
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowEpicInput(!showEpicInput)}
-              className="p-2 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-600 transition-colors"
-            >
-              {showEpicInput ? <X size={16} /> : <Plus size={16} />}
-            </button>
-          </div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            <Crown size={16} className="inline mr-2" />
+            Related epics
+          </label>
 
-          {/* Selected Epics */}
+          {/* Selected Epic Tasks */}
           {form.epics.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
-              {form.epics.map((epic, idx) => (
+              {form.epics.map((epicName) => (
                 <span
-                  key={idx}
+                  key={epicName}
                   className="flex items-center gap-2 text-sm text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-3 py-1"
                 >
-                  {epic}
+                  {epicName}
                   <button
                     type="button"
-                    onClick={() => handleRemoveEpic(epic)}
+                    onClick={() => handleRemoveEpic(epicName)}
                     className="hover:bg-purple-200 rounded-full p-1 transition-colors"
                   >
                     <X size={12} />
@@ -584,65 +544,51 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
             </div>
           )}
 
-          {/* Add Epic Input */}
-          {showEpicInput && (
-            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 space-y-3">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newEpic}
-                  onChange={(e) => setNewEpic(e.target.value)}
-                  placeholder="Enter epic name"
-                  className="flex-1 border-2 border-purple-200 rounded-lg px-3 py-2 text-sm focus:border-purple-500 focus:outline-none transition-colors"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddEpic();
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddEpic}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                >
-                  Add
-                </button>
+          {/* Epic Tasks Multi-Select */}
+          {epicTasks.length > 0 && (
+            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+              <p className="text-xs font-medium text-purple-600 mb-3">Select epic tasks to add:</p>
+              <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-100">
+                {epicTasks.map((epicTask) => (
+                  <label key={epicTask.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-purple-100 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.epics.includes(epicTask.title)}
+                      onChange={(e) => {
+                        if (e.target.checked && form.epics.length < 3) {
+                          setForm(prev => ({
+                            ...prev,
+                            epics: [...prev.epics, epicTask.title]
+                          }));
+                        } else if (!e.target.checked) {
+                          setForm(prev => ({
+                            ...prev,
+                            epics: prev.epics.filter(name => name !== epicTask.title)
+                          }));
+                        }
+                      }}
+                      className="w-4 h-4 text-purple-600 border-purple-300 rounded focus:ring-purple-500"
+                    />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-slate-700">{epicTask.title}</span>
+                      {epicTask.description && (
+                        <p className="text-xs text-slate-500 truncate">{epicTask.description}</p>
+                      )}
+                    </div>
+                  </label>
+                ))}
               </div>
-              
-              {/* Existing Epics for Quick Selection */}
-              {existingEpics.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-purple-600 mb-2">Quick select from existing:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {existingEpics
-                      .filter(epic => !form.epics.includes(epic))
-                      .slice(0, 5)
-                      .map((epic) => (
-                        <button
-                          key={epic}
-                          type="button"
-                          onClick={() => {
-                            if (form.epics.length < 3) {
-                              setForm(prev => ({
-                                ...prev,
-                                epics: [...prev.epics, epic]
-                              }));
-                            }
-                          }}
-                          className="text-xs px-2 py-1 bg-white border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors text-purple-600"
-                        >
-                          + {epic}
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              )}
+            </div>
+          )}
+
+          {epicTasks.length === 0 && (
+            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 text-center">
+              <p className="text-xs text-purple-600">No epics on this board.</p>
             </div>
           )}
 
           <p className="text-xs text-slate-500">
-            {form.epics.length}/3 epics (helps organize work into larger initiatives)
+            {form.epics.length}/3 epic added to this task.
           </p>
         </div>
 
@@ -672,7 +618,6 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
             onClick={handleSubmit}
             disabled={
               !form.title.trim() ||
-              !form.dueDate ||
               !form.taskStatus ||
               !form.type ||
               Object.values(fieldErrors).some((error) => error)

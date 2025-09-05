@@ -1,5 +1,6 @@
 // components/Templates/TaskCard.tsx
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Draggable } from '@hello-pangea/dnd';
 import { Pencil, Trash2, UserCircle, Calendar, CheckSquare, Square, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
@@ -80,6 +81,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
       text: 'text-gray-700',
       border: 'border-gray-200',
       label: 'Subtask'
+    },
+    poc: { 
+      bg: 'bg-yellow-100',
+      text: 'text-yellow-700',
+      border: 'border-yellow-200',
+      label: 'POC'
     },
   };
 
@@ -346,12 +353,13 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
         )}
       </Draggable>
 
-      {showConfirm && (
+      {showConfirm && createPortal(
         <ConfirmModal
           message="Are you sure you want to delete this task?"
           onConfirm={handleDelete}
           onCancel={() => setShowConfirm(false)}
-        />
+        />,
+        document.body
       )}
     </>
   );

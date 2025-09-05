@@ -149,7 +149,7 @@ const SprintRouter: React.FC = () => {
 
     switch(activeTab) {
       case 'analytics':
-        return <SprintAnalytics tasks={tasks} board={currentBoard} />;
+        return <SprintAnalytics tasks={tasks.filter(t => t.sprintId === sprint.id)} board={currentBoard} />;
       case 'retro':
         // Create proper RetroData structure with defaults
         const retroDataWithDefaults = {

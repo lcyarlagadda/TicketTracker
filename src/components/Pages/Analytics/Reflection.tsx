@@ -1381,6 +1381,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
             setSelectedTask(null);
             setShowTaskModal(false);
           }}
+          existingTasks={tasks}
         />
       )}
     </div>
