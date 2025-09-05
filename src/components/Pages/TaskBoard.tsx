@@ -1,7 +1,33 @@
-// components/Pages/TaskBoard.tsx
+// components/Pages/TaskBoard.tsx - Enhanced with Sprint Management
 import React, { useEffect, useState, useMemo } from "react";
 import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd";
-import { Plus, Users, Minus, X, Edit, Trash2, Search, Filter, UserCheck, Tag, UserRound, BarChart3, MessageSquare, BookOpen, Target } from "lucide-react";
+import {
+  Plus,
+  Users,
+  Minus,
+  X,
+  Edit,
+  Trash2,
+  Search,
+  Filter,
+  UserCheck,
+  Tag,
+  UserRound,
+  BarChart3,
+  MessageSquare,
+  BookOpen,
+  Target,
+  Calendar,
+  Clock,
+  TrendingUp,
+  Play,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Layers,
+  Calendar1Icon,
+} from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
 import { useTasksSync } from "../../hooks/useFirebaseSync";
 import {
@@ -15,13 +41,15 @@ import {
   createTask,
   setSelectedTask,
 } from "../../store/slices/taskSlice";
-import { Task } from "../../store/types/types";
+import { fetchSprints } from "../../store/slices/sprintSlice";
+import { Task, Sprint } from "../../store/types/types";
 import TaskCard from "../Templates/TaskCard";
 import TaskModal from "./TaskModal";
 import TaskStats from "../TaskStats";
 import CreateTaskForm from "../Forms/CreateTaskForm";
 import ErrorModal from "../Atoms/ErrorModal";
 import { useNavigate } from "react-router-dom";
+import FilterSection from "../Atoms/Filter";
 
 interface TaskBoardProps {
   boardId: string;
@@ -32,27 +60,28 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const { user } = useAppSelector((state) => state.auth);
   const { currentBoard, loading } = useAppSelector((state) => state.boards);
   const { selectedTask } = useAppSelector((state) => state.tasks);
-  const tasks = useTasksSync(boardId); // Real-time sync
+  const { sprints } = useAppSelector((state) => state.sprints);
+  const tasks = useTasksSync(boardId);
   const navigate = useNavigate();
-  
-  // Get collaborators from currentBoard, ensuring we have the latest data
+
+  // Get collaborators from currentBoard
   const collaborators = currentBoard?.collaborators || [];
-  
-  console.log('Current board collaborators:', collaborators); // Debug log
 
   // State variables
   const [formOpen, setFormOpen] = useState(false);
   const [editingStatus, setEditingStatus] = useState<string | null>(null);
   const [newStatusName, setNewStatusName] = useState("");
-  const [newStatusIndex, setNewStatusIndex] = useState<number | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [teamSectionCollapsed, setTeamSectionCollapsed] = useState(false);
   const [error, setError] = useState("");
   const [showCollaboratorInput, setShowCollaboratorInput] = useState(false);
   const [newCollaborator, setNewCollaborator] = useState("");
   const [newCollaboratorName, setNewCollaboratorName] = useState("");
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
+    null
+  );
   const [moveToColumn, setMoveToColumn] = useState<string>("");
 
   // Search and Filter states
@@ -60,11 +89,15 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedSprints, setSelectedSprints] = useState<string[]>([]);
 
-  // Get unique assignees and tags from tasks
+  // Current active sprint for board header
+  const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
+
+  // Get unique assignees, tags, and sprints from tasks
   const uniqueAssignees = useMemo(() => {
     const assignees = new Set<string>();
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       if (task.assignedTo) {
         assignees.add(task.assignedTo);
       }
@@ -74,44 +107,85 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
   const uniqueTags = useMemo(() => {
     const tags = new Set<string>();
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       if (task.tags && task.tags.length > 0) {
-        task.tags.forEach(tag => tags.add(tag));
+        task.tags.forEach((tag) => tags.add(tag));
       }
     });
     return Array.from(tags);
   }, [tasks]);
 
-  // Filtered tasks based on search and filters (excluding subtasks)
+  const uniqueSprints = useMemo(() => {
+    const sprintNames = new Set<string>();
+    tasks.forEach((task) => {
+      if (task.sprintId) {
+        const sprint = sprints.find((s) => s.id === task.sprintId);
+        if (sprint) {
+          sprintNames.add(sprint.name);
+        }
+      } else {
+        sprintNames.add("Backlog");
+      }
+    });
+    return Array.from(sprintNames);
+  }, [tasks, sprints]);
+
+  // Filtered tasks based on search and filters
   const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
+    return tasks.filter((task) => {
       // Exclude subtasks from main board view
       if (task.parentTaskId) return false;
-      
+
       // Search filter
-      const matchesSearch = searchTerm === "" || 
+      const matchesSearch =
+        searchTerm === "" ||
         task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         task.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         task.id.toLowerCase().includes(searchTerm.toLowerCase());
 
       // Assignee filter
-      const matchesAssignee = selectedAssignees.length === 0 || 
+      const matchesAssignee =
+        selectedAssignees.length === 0 ||
         (task.assignedTo && selectedAssignees.includes(task.assignedTo));
 
       // Tags filter
-      const matchesTags = selectedTags.length === 0 || 
-        (task.tags && task.tags.some(tag => selectedTags.includes(tag)));
+      const matchesTags =
+        selectedTags.length === 0 ||
+        (task.tags && task.tags.some((tag) => selectedTags.includes(tag)));
 
-      return matchesSearch && matchesAssignee && matchesTags;
+      // Sprint filter
+      const matchesSprint =
+        selectedSprints.length === 0 ||
+        (task.sprintId &&
+          selectedSprints.includes(
+            sprints.find((s) => s.id === task.sprintId)?.name || ""
+          )) ||
+        (!task.sprintId && selectedSprints.includes("Backlog"));
+
+      return matchesSearch && matchesAssignee && matchesTags && matchesSprint;
     });
-  }, [tasks, searchTerm, selectedAssignees, selectedTags]);
+  }, [
+    tasks,
+    searchTerm,
+    selectedAssignees,
+    selectedTags,
+    selectedSprints,
+    sprints,
+  ]);
 
-  // Fetch board data on mount
+  // Fetch board data and sprints on mount
   useEffect(() => {
     if (user && boardId) {
       dispatch(fetchBoard({ userId: user.uid, boardId }));
+      dispatch(fetchSprints({ userId: user.uid, boardId }));
     }
   }, [user, boardId, dispatch]);
+
+  // Set current active sprint
+  useEffect(() => {
+    const activeSprint = sprints.find((sprint) => sprint.status === "active");
+    setCurrentSprint(activeSprint || null);
+  }, [sprints]);
 
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination || !user || !currentBoard) return;
@@ -145,44 +219,61 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     );
   };
 
-   const AnalyticsNavigation = () => (
-    <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 px-6 py-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-700">Board Tools</h3>
-        <div className="flex gap-2">
-          <button
-            onClick={() => navigate(`/board/${boardId}/planning`)}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-          >
-            <Target size={16} />
-            <span className="hidden sm:inline">Planning</span>
-          </button>
-          <button
-            onClick={() => navigate(`/board/${boardId}/analytics`)}
-            className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-          >
-            <BarChart3 size={16} />
-            <span className="hidden sm:inline">Analytics</span>
-          </button>
-          <button
-            onClick={() => navigate(`/board/${boardId}/retro`)}
-            className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-          >
-            <MessageSquare size={16} />
-            <span className="hidden sm:inline">Retrospective</span>
-          </button>
-          <button
-            onClick={() => navigate(`/board/${boardId}/reflection`)}
-            className="flex items-center gap-2 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-          >
-            <BookOpen size={16} />
-            <span className="hidden sm:inline">Reflection</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  // Enhanced Board Tools Component with Sprint Context
+  const BoardTools = () => {
+    const currentSprintNumber = currentSprint?.sprintNumber;
 
+    return (
+      <div className="flex gap-2">
+        <button
+          onClick={() => navigate(`/board/${boardId}/planning`)}
+          className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+        >
+          <Target size={14} />
+          <span className="hidden sm:inline">Planning</span>
+        </button>
+        {currentSprint && (
+          <>
+            <button
+              onClick={() =>
+                navigate(
+                 `/board/${boardId}/${currentSprintNumber}/analytics/`
+                )
+              }
+              className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+            >
+              <BarChart3 size={14} />
+              <span className="hidden sm:inline">Analytics</span>
+            </button>
+            <button
+              onClick={() =>
+                navigate(
+                   `/board/${boardId}/${currentSprintNumber}/retro/`
+                )
+              }
+              className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+            >
+              <MessageSquare size={14} />
+              <span className="hidden sm:inline">Retro</span>
+            </button>
+            <button
+              onClick={() =>
+                navigate(
+                   `/board/${boardId}/${currentSprintNumber}/reflection/`
+                )
+              }
+              className="flex items-center gap-1 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+            >
+              <BookOpen size={14} />
+              <span className="hidden sm:inline">Reflection</span>
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // Rest of the existing handlers (keeping them unchanged)
   const handleAddColumn = async () => {
     const columnName = newColumnName.trim();
     if (!columnName || !user || !currentBoard) {
@@ -217,7 +308,9 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const deleteColumnDirectly = async (statusToDelete: string) => {
     if (!user || !currentBoard) return;
 
-    const updatedStatuses = currentBoard.statuses.filter((s) => s !== statusToDelete);
+    const updatedStatuses = currentBoard.statuses.filter(
+      (s) => s !== statusToDelete
+    );
 
     try {
       await dispatch(
@@ -237,27 +330,29 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const handleDeleteColumn = async (statusToDelete: string) => {
     if (!user || !currentBoard) return;
 
-    // Check if there are tasks in this column
-    const tasksInColumn = tasks.filter((task) => task.status === statusToDelete);
-    
+    const tasksInColumn = tasks.filter(
+      (task) => task.status === statusToDelete
+    );
+
     if (tasksInColumn.length > 0) {
-      // Show confirmation dialog to move tasks
       setShowDeleteConfirm(statusToDelete);
-      setMoveToColumn(currentBoard.statuses.find(s => s !== statusToDelete) || "");
+      setMoveToColumn(
+        currentBoard.statuses.find((s) => s !== statusToDelete) || ""
+      );
       return;
     }
 
-    // If no tasks, delete directly
     await deleteColumnDirectly(statusToDelete);
   };
 
   const confirmDeleteColumn = async () => {
     if (!showDeleteConfirm || !user || !currentBoard || !moveToColumn) return;
 
-    const tasksInColumn = tasks.filter((task) => task.status === showDeleteConfirm);
+    const tasksInColumn = tasks.filter(
+      (task) => task.status === showDeleteConfirm
+    );
 
     try {
-      // Move all tasks to the selected column
       for (const task of tasksInColumn) {
         const updatedProgressLog = [
           ...(task.progressLog || []),
@@ -274,15 +369,14 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
             userId: user.uid,
             boardId,
             taskId: task.id,
-            updates: { 
-              status: moveToColumn, 
-              progressLog: updatedProgressLog 
+            updates: {
+              status: moveToColumn,
+              progressLog: updatedProgressLog,
             },
           })
         );
       }
 
-      // Now delete the column
       await deleteColumnDirectly(showDeleteConfirm);
       setShowDeleteConfirm(null);
       setMoveToColumn("");
@@ -412,7 +506,6 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
       dispatch(updateCurrentBoardStatuses(updatedStatuses));
 
-      // Update all tasks with the old status
       const tasksToUpdate = tasks.filter((task) => task.status === oldStatus);
       for (const task of tasksToUpdate) {
         dispatch(
@@ -439,9 +532,14 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     setSearchTerm("");
     setSelectedAssignees([]);
     setSelectedTags([]);
+    setSelectedSprints([]);
   };
 
-  const hasActiveFilters = searchTerm !== "" || selectedAssignees.length > 0 || selectedTags.length > 0;
+  const hasActiveFilters =
+    searchTerm !== "" ||
+    selectedAssignees.length > 0 ||
+    selectedTags.length > 0 ||
+    selectedSprints.length > 0;
 
   if (loading || !currentBoard) {
     return (
@@ -459,7 +557,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       {/* Sidebar */}
       <aside
         className={`bg-white border-r-2 border-slate-200/60 shadow-xl transition-all duration-300 ${
-          sidebarCollapsed ? "w-18" : "w-80"
+          sidebarCollapsed ? "w-18" : "w-72"
         } flex-shrink-0 relative z-20`}
       >
         <div className="p-6 border-b border-slate-200/60 bg-gradient-to-r from-blue-600 to-blue-600">
@@ -478,124 +576,147 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
         {!sidebarCollapsed && (
           <div className="p-6 overflow-y-auto h-full">
+
             {/* Team Members Section */}
             <div className="mb-8">
               <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTeamSectionCollapsed(!teamSectionCollapsed)}
+                  className="flex items-center gap-2 flex-1"
+                >
                   <div className="p-2 rounded-xl bg-indigo-100">
                     <Users size={18} className="text-indigo-600" />
                   </div>
                   <h3 className="font-bold text-slate-800">Team</h3>
-                </div>
-                <button
-                  onClick={() =>
-                    setShowCollaboratorInput(!showCollaboratorInput)
-                  }
-                  className={`p-2 rounded-xl transition-all duration-200 ${
-                    showCollaboratorInput
-                      ? "bg-red-100 text-red-600 hover:bg-red-200"
-                      : "bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
-                  }`}
-                >
-                  {showCollaboratorInput ? <X size={16} /> : <Plus size={16} />}
+                  {teamSectionCollapsed ? (
+                    <ChevronDown size={16} className="text-slate-600" />
+                  ) : (
+                    <ChevronUp size={16} className="text-slate-600" />
+                  )}
                 </button>
-              </div>
-
-              {/* Add Collaborator Form */}
-              <div
-                className={`transition-all duration-300 overflow-hidden ${
-                  showCollaboratorInput
-                    ? "max-h-60 opacity-100 mb-4"
-                    : "max-h-0 opacity-0"
-                }`}
-              >
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/60 space-y-4">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
-                      Email
-                    </label>
-                    <input
-                      value={newCollaborator}
-                      onChange={(e) => setNewCollaborator(e.target.value)}
-                      placeholder="colleague@company.com"
-                      className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
-                      Name
-                    </label>
-                    <input
-                      value={newCollaboratorName}
-                      onChange={(e) => setNewCollaboratorName(e.target.value)}
-                      placeholder="John Doe"
-                      className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
-                    />
-                  </div>
+                {!teamSectionCollapsed && (
                   <button
-                    onClick={() => {
-                      handleAddCollaborator();
-                      setShowCollaboratorInput(false);
-                    }}
-                    className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 text-white py-2 px-4 rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                    onClick={() =>
+                      setShowCollaboratorInput(!showCollaboratorInput)
+                    }
+                    className={`p-2 rounded-xl transition-all duration-200 ${
+                      showCollaboratorInput
+                        ? "bg-red-100 text-red-600 hover:bg-red-200"
+                        : "bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
+                    }`}
                   >
-                    Add Member
+                    {showCollaboratorInput ? (
+                      <X size={16} />
+                    ) : (
+                      <Plus size={16} />
+                    )}
                   </button>
-                </div>
+                )}
               </div>
 
-              {/* Team Members List */}
-              <div className="space-y-3">
-                {collaborators.map(
-                  (c, idx) =>
-                    c.email !== user?.email && (
-                      <div
-                        key={idx}
-                        className="group flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-200/60 hover:shadow-md transition-all duration-200"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-600 rounded-full flex items-center justify-center shadow-md">
-                            <span className="text-white text-sm font-bold">
-                              {c.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-semibold text-slate-800 text-sm">
-                              {c.name.length > 15
-                              ? `${c.name.slice(0, 10)}...`
-                              : c.name}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {c.email.length > 15 ? `${c.email.slice(0, 10)}...` : c.email}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveCollaborator(c.email)}
-                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 hover:bg-red-100 p-2 rounded-xl transition-all duration-200"
-                          title="Remove member"
-                        >
-                          <X size={14} />
-                        </button>
+              {!teamSectionCollapsed && (
+                <>
+                  {/* Add Collaborator Form */}
+                  <div
+                    className={`transition-all duration-300 overflow-hidden ${
+                      showCollaboratorInput
+                        ? "max-h-60 opacity-100 mb-4"
+                        : "max-h-0 opacity-0"
+                    }`}
+                  >
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/60 space-y-4">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
+                          Email
+                        </label>
+                        <input
+                          value={newCollaborator}
+                          onChange={(e) => setNewCollaborator(e.target.value)}
+                          placeholder="colleague@company.com"
+                          className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                        />
                       </div>
-                    )
-                )}
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
+                          Name
+                        </label>
+                        <input
+                          value={newCollaboratorName}
+                          onChange={(e) =>
+                            setNewCollaboratorName(e.target.value)
+                          }
+                          placeholder="John Doe"
+                          className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          handleAddCollaborator();
+                          setShowCollaboratorInput(false);
+                        }}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 text-white py-2 px-4 rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                      >
+                        Add Member
+                      </button>
+                    </div>
+                  </div>
 
-                {collaborators.filter((c) => c.email !== user?.email).length ===
-                  0 && (
-                    <div className="text-center py-8">
-                    <div className="flex justify-center mb-3">
-                      <UserRound size={32} className="text-slate-300" />
-                    </div>
-                    <p className="text-sm text-slate-500">
-                      No team members yet
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Add collaborators to get started
-                    </p>
-                    </div>
-                )}
-              </div>
+                  {/* Team Members List */}
+                  <div className="space-y-3">
+                    {collaborators.map(
+                      (c, idx) =>
+                        c.email !== user?.email && (
+                          <div
+                            key={idx}
+                            className="group flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-200/60 hover:shadow-md transition-all duration-200"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-600 rounded-full flex items-center justify-center shadow-md">
+                                <span className="text-white text-sm font-bold">
+                                  {c.name.charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="font-semibold text-slate-800 text-sm">
+                                  {c.name.length > 12
+                                    ? `${c.name.slice(0, 12)}...`
+                                    : c.name}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {c.email.length > 12
+                                    ? `${c.email.slice(0, 12)}...`
+                                    : c.email}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleRemoveCollaborator(c.email)}
+                              className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 hover:bg-red-100 p-2 rounded-xl transition-all duration-200"
+                              title="Remove member"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )
+                    )}
+
+                    {collaborators.filter((c) => c.email !== user?.email)
+                      .length === 0 && (
+                      <div className="text-center py-8">
+                        <div className="flex justify-center mb-3">
+                          <UserRound size={32} className="text-slate-300" />
+                        </div>
+                        <p className="text-sm text-slate-500">
+                          No team members yet
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Add collaborators to get started
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Task Stats */}
@@ -621,137 +742,68 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         </div>
 
         <div className="relative z-10 h-full flex flex-col">
-          {/* Header */}
+          {/* Header with Sprint Info */}
           <div className="flex-shrink-0 p-6 pb-4">
             <div className="flex justify-between items-center mb-6">
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-                  {currentBoard.title}
-                </h1>
-                <p className="text-slate-600 mt-1">
-                  Manage your project tasks efficiently
-                </p>
-              </div>
-              <button
-                onClick={() => setFormOpen(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 hover:scale-105"
-              >
-                <Plus size={20} />
-                Add Task
-              </button>
-            </div>
+              <div className="flex items-center gap-4">
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                    {currentBoard.title}
+                  </h1>
 
-             <AnalyticsNavigation />
-
-            {/* Search and Filter Controls */}
-            <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/60 shadow-lg p-4 mb-4">
-              <div className="flex flex-col gap-4">
-                {/* Search Bar and Filter Toggle */}
-                <div className="flex gap-3">
-                  <div className="flex-1 relative">
-                    <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Search tasks by title, description, or ID..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border-2 border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <button
-                    onClick={() => setShowFilters(!showFilters)}
-                    className={`px-4 py-2 rounded-xl font-medium text-sm transition-colors flex items-center gap-2 ${
-                      showFilters || hasActiveFilters
-                        ? "bg-blue-600 text-white"
-                        : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                    }`}
-                  >
-                    <Filter size={16} />
-                    Filters
-                    {hasActiveFilters && (
-                      <span className="bg-white text-blue-600 text-xs px-2 py-1 rounded-full font-bold">
-                        {(searchTerm ? 1 : 0) + selectedAssignees.length + selectedTags.length}
-                      </span>
-                    )}
-                  </button>
-                  {hasActiveFilters && (
-                    <button
-                      onClick={clearFilters}
-                      className="px-4 py-2 bg-red-100 text-red-600 rounded-xl font-medium text-sm hover:bg-red-200 transition-colors"
-                    >
-                      Clear
-                    </button>
+                  {currentSprint && (
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full text-sm font-medium shadow-sm">
+                        <Zap size={16} />
+                        <span>{currentSprint.name}</span>
+                      </div>
+                      {currentSprint.endDate && (
+                        <div className="flex items-center gap-1 text-sm text-slate-600">
+                          <Calendar1Icon size={14} />
+                          <span>
+                            {new Date(
+                              currentSprint.startDate
+                            ).toLocaleDateString()}{" "}
+                            -{" "}
+                            {new Date(
+                              currentSprint.endDate
+                            ).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-
-                {/* Filter Controls */}
-                {showFilters && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200">
-                    {/* Assignee Filter */}
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                        <UserCheck size={16} />
-                        Assigned To
-                      </label>
-                      <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {uniqueAssignees.map(assignee => (
-                          <label key={assignee} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={selectedAssignees.includes(assignee)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedAssignees([...selectedAssignees, assignee]);
-                                } else {
-                                  setSelectedAssignees(selectedAssignees.filter(a => a !== assignee));
-                                }
-                              }}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-600">{assignee}</span>
-                          </label>
-                        ))}
-                        {uniqueAssignees.length === 0 && (
-                          <p className="text-sm text-slate-400">No assigned tasks yet</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Tags Filter */}
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                        <Tag size={16} />
-                        Tags
-                      </label>
-                      <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {uniqueTags.map(tag => (
-                          <label key={tag} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={selectedTags.includes(tag)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedTags([...selectedTags, tag]);
-                                } else {
-                                  setSelectedTags(selectedTags.filter(t => t !== tag));
-                                }
-                              }}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-slate-600 px-2 py-1 bg-slate-100 rounded-lg text-xs">
-                              {tag}
-                            </span>
-                          </label>
-                        ))}
-                        {uniqueTags.length === 0 && (
-                          <p className="text-sm text-slate-400">No tags found</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <BoardTools />
+                <button
+                  onClick={() => setFormOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 hover:scale-105"
+                >
+                  <Plus size={20} />
+                  Add Task
+                </button>
               </div>
             </div>
+
+            <FilterSection
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              showFilters={showFilters}
+              setShowFilters={setShowFilters}
+              selectedAssignees={selectedAssignees}
+              setSelectedAssignees={setSelectedAssignees}
+              selectedTags={selectedTags}
+              setSelectedTags={setSelectedTags}
+              selectedSprints={selectedSprints}
+              setSelectedSprints={setSelectedSprints}
+              uniqueAssignees={uniqueAssignees}
+              uniqueTags={uniqueTags}
+              uniqueSprints={uniqueSprints}
+              hasActiveFilters={hasActiveFilters}
+              clearFilters={clearFilters}
+            />
 
             {/* Create Task Form */}
             {formOpen && (
@@ -760,6 +812,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                 onSubmit={handleCreateTask}
                 onCancel={() => setFormOpen(false)}
                 existingTasks={tasks}
+                sprints={sprints}
               />
             )}
           </div>
@@ -768,15 +821,18 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
           <div className="flex-1 min-h-0">
             <div className="h-full overflow-auto px-6">
               <DragDropContext onDragEnd={handleDragEnd}>
-                <div className="flex gap-6 pb-6" style={{ width: 'max-content', minWidth: '100%' }}>
+                <div
+                  className="flex gap-4 pb-6"
+                  style={{ width: "max-content", minWidth: "100%" }}
+                >
                   {currentBoard.statuses.map((status, index) => (
                     <div
                       key={status}
                       className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/60 shadow-xl flex-shrink-0 group"
-                      style={{ width: '320px' }}
+                      style={{ width: "280px" }}
                     >
                       {/* Column Header */}
-                      <div className="p-6 border-b border-slate-200/60">
+                      <div className="p-4 border-b border-slate-200/60">
                         <div className="flex justify-between items-center">
                           {editingStatus === status ? (
                             <input
@@ -784,7 +840,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               onChange={(e) => setNewStatusName(e.target.value)}
                               onBlur={() => handleRenameStatus(status)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") handleRenameStatus(status);
+                                if (e.key === "Enter")
+                                  handleRenameStatus(status);
                                 if (e.key === "Escape") {
                                   setEditingStatus(null);
                                   setNewStatusName("");
@@ -822,7 +879,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                             </div>
                           )}
                           <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full ml-2">
-                            {tasksByStatus(status).length} tasks
+                            {tasksByStatus(status).length}
                           </span>
                         </div>
                       </div>
@@ -833,22 +890,22 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                           <div
                             ref={provided.innerRef}
                             {...provided.droppableProps}
-                            className={`p-4 transition-all duration-200 ${
+                            className={`p-3 transition-all duration-200 ${
                               snapshot.isDraggingOver
                                 ? "bg-blue-50/80 border-2 border-dashed border-blue-300 rounded-xl"
                                 : ""
                             }`}
                             style={{
-                              minHeight: '200px'
+                              minHeight: "200px",
                             }}
                           >
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                               {tasksByStatus(status).map((task, index) => (
                                 <div
                                   key={task.id}
                                   style={{
-                                    position: 'relative',
-                                    zIndex: 1001
+                                    position: "relative",
+                                    zIndex: 1001,
                                   }}
                                 >
                                   <TaskCard
@@ -862,23 +919,26 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               ))}
                             </div>
                             {provided.placeholder}
-                            <div style={{ minHeight: '20px' }} />
+                            <div style={{ minHeight: "20px" }} />
                           </div>
                         )}
                       </Droppable>
                     </div>
                   ))}
-                  
+
                   {/* Add Column Button */}
-                  <div 
-                    className="flex-shrink-0 flex items-start" 
-                    style={{ 
-                      width: '100px',
-                      minWidth: '100px'
+                  <div
+                    className="flex-shrink-0 flex items-start"
+                    style={{
+                      width: "100px",
+                      minWidth: "100px",
                     }}
                   >
                     {showAddColumn ? (
-                      <div className="bg-white/95 backdrop-blur-md rounded-2xl border-2 border-dashed border-blue-300 shadow-xl p-4" style={{ width: '300px' }}>
+                      <div
+                        className="bg-white/95 backdrop-blur-md rounded-2xl border-2 border-dashed border-blue-300 shadow-xl p-4"
+                        style={{ width: "260px" }}
+                      >
                         <div className="space-y-3">
                           <input
                             value={newColumnName}
@@ -919,7 +979,10 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                         className="w-16 h-16 bg-white/70 backdrop-blur-md rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 flex items-center justify-center group"
                         title="Add new column"
                       >
-                        <Plus size={24} className="text-slate-400 group-hover:text-blue-500" />
+                        <Plus
+                          size={24}
+                          className="text-slate-400 group-hover:text-blue-500"
+                        />
                       </button>
                     )}
                   </div>
@@ -933,12 +996,14 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       {/* Create Task Modal */}
       {formOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div 
+          <div
             className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative z-0"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 bg-white rounded-t-2xl border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10 relative">
-              <h3 className="text-xl font-bold text-slate-800">Create New Task</h3>
+              <h3 className="text-xl font-bold text-slate-800">
+                Create New Task
+              </h3>
               <button
                 onClick={() => setFormOpen(false)}
                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
@@ -952,6 +1017,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                 onSubmit={handleCreateTask}
                 onCancel={() => setFormOpen(false)}
                 existingTasks={tasks}
+                sprints={sprints}
               />
             </div>
           </div>
@@ -963,6 +1029,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         <TaskModal
           task={selectedTask}
           onClose={() => dispatch(setSelectedTask(null))}
+          sprints={sprints}
         />
       )}
 
@@ -971,13 +1038,18 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="mb-6">
-              <h3 className="text-xl font-bold text-slate-800 mb-2">Delete Column</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">
+                Delete Column
+              </h3>
               <p className="text-slate-600">
-                The column "<span className="font-semibold">{showDeleteConfirm}</span>" contains {tasks.filter(t => t.status === showDeleteConfirm).length} task(s). 
-                Where would you like to move them?
+                The column "
+                <span className="font-semibold">{showDeleteConfirm}</span>"
+                contains{" "}
+                {tasks.filter((t) => t.status === showDeleteConfirm).length}{" "}
+                task(s). Where would you like to move them?
               </p>
             </div>
-            
+
             <div className="mb-6">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Move tasks to:
@@ -989,14 +1061,15 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
               >
                 <option value="">Select a column...</option>
                 {currentBoard?.statuses
-                  .filter(s => s !== showDeleteConfirm)
-                  .map(status => (
-                    <option key={status} value={status}>{status}</option>
-                  ))
-                }
+                  .filter((s) => s !== showDeleteConfirm)
+                  .map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
               </select>
             </div>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={() => {

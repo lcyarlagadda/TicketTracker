@@ -1,456 +1,403 @@
-// components/Analytics/SprintPlanning.tsx
+// components/Analytics/SprintPlanningWithModal.tsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Target, Clock, Users, Plus, Save, Edit3, X, CheckCircle } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '../../../hooks/redux';
-import { updateBoard } from '../../../store/slices/boardSlice';
-import { Task, Board, SprintPlanningData } from '../../../store/types/types';
+import { Target, Plus, ArrowLeft, Play, Square, CheckCircle, BarChart3, MessageSquare, BookOpen, AlertTriangle, X, Save, Edit3 } from 'lucide-react';
+import { useAppSelector } from '../../../hooks/redux';
+import { useTasksSync } from '../../../hooks/useFirebaseSync';
+import { Sprint } from '../../../store/types/types';
+import { sprintService } from '../../../services/sprintService';
+import { useNavigate } from 'react-router-dom';
+import SprintModal from '../../Forms/CreateSprintForm';
 
 interface SprintPlanningProps {
-  board: Board & { sprintPlanningData?: SprintPlanningData };
-  tasks: Task[];
+  boardId: string;
 }
 
-const SprintPlanning: React.FC<SprintPlanningProps> = ({ board, tasks }) => {
-  const dispatch = useAppDispatch();
+const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => {
   const { user } = useAppSelector(state => state.auth);
+  const navigate = useNavigate();
+  const tasks = useTasksSync(boardId);
   
-  const [planningData, setPlanningData] = useState<SprintPlanningData>(
-    board.sprintPlanningData || {
-      goals: [],
-      features: [],
-      totalStoryPoints: 0,
-      estimatedWorkingHours: 0,
-      sprintDuration: 0,
-      teamCapacity: 0,
-      sprintStartDate: new Date().toISOString().split('T')[0],
-      sprintEndDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      sprintObjective: '',
-      riskAssessment: '',
-      lastUpdated: new Date().toISOString()
-    }
-  );
+  const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
 
-  const [newGoal, setNewGoal] = useState('');
-  const [newFeature, setNewFeature] = useState('');
-  const [showGoalForm, setShowGoalForm] = useState(false);
-  const [showFeatureForm, setShowFeatureForm] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-
-  // Calculate metrics from tasks
-  const sprintMetrics = useMemo(() => {
-    const getTaskPoints = (task: Task): number => {
-      if ((task as any).points) return (task as any).points;
-      return task.priority === 'High' ? 8 : task.priority === 'Medium' ? 5 : 3;
-    };
-
-    const totalStoryPoints = tasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
-    const completedTasks = tasks.filter(t => t.status === 'Done' || t.status === 'done');
-    const completedPoints = completedTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
-    
-    const estimatedHoursPerPoint = 6;
-    const totalEstimatedHours = totalStoryPoints * estimatedHoursPerPoint;
-    
-    const teamMembers = [...new Set(tasks.map(t => t.assignedTo).filter(Boolean))];
-    
-    return {
-      totalStoryPoints,
-      completedPoints,
-      totalEstimatedHours,
-      teamMembers: teamMembers.length,
-      averagePointsPerTask: tasks.length > 0 ? (totalStoryPoints / tasks.length).toFixed(1) : '0',
-      completionPercentage: totalStoryPoints > 0 ? ((completedPoints / totalStoryPoints) * 100).toFixed(1) : '0'
-    };
+  // Calculate team size
+  const teamSize = useMemo(() => {
+    const assignees = new Set(tasks.map(t => t.assignedTo).filter(Boolean));
+    return Math.max(assignees.size, 1);
   }, [tasks]);
 
-  // Auto-save planning data
-  const savePlanningData = async () => {
-    if (!user || !board.id) return;
-    
-    setSaveStatus('saving');
-    try {
-      await dispatch(updateBoard({
-        userId: user.uid,
-        boardId: board.id,
-        updates: {
-          sprintPlanningData: {
-            ...planningData,
-            totalStoryPoints: sprintMetrics.totalStoryPoints,
-            estimatedWorkingHours: sprintMetrics.totalEstimatedHours,
-            lastUpdated: new Date().toISOString()
-          }
-        }
-      })).unwrap();
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch (error) {
-      setSaveStatus('error');
-      console.error('Error saving sprint planning data:', error);
-    }
-  };
-
+  // Fetch sprints
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (planningData.goals.length > 0 || planningData.features.length > 0 || planningData.sprintObjective) {
-        savePlanningData();
+    const fetchSprints = async () => {
+      if (!user) return;
+      
+      setLoading(true);
+      try {
+        const boardSprints = await sprintService.fetchBoardSprints(user.uid, boardId);
+        setSprints(boardSprints.sort((a, b) => b.sprintNumber - a.sprintNumber));
+      } catch (error) {
+        console.error('Error fetching sprints:', error);
+      } finally {
+        setLoading(false);
       }
-    }, 1000);
-    return () => clearTimeout(timeoutId);
-  }, [planningData]);
+    };
 
-  const addGoal = () => {
-    if (newGoal.trim()) {
-      setPlanningData(prev => ({
-        ...prev,
-        goals: [...prev.goals, newGoal.trim()]
-      }));
-      setNewGoal('');
-      setShowGoalForm(false);
+    fetchSprints();
+  }, [user, boardId]);
+
+  // Get current active sprint
+  const activeSprint = sprints.find(s => s.status === 'active');
+  const unassignedTasks = tasks.filter(task => !task.sprintId);
+
+  const handleBackToBoard = () => {
+    navigate(`/board/${boardId}`);
+  };
+
+  // Sprint actions
+  const startSprint = async (sprintId: string) => {
+    if (!user) return;
+    
+    try {
+      await sprintService.updateSprint(user.uid, boardId, sprintId, { status: 'active' });
+      setSprints(prev => prev.map(s => 
+        s.id === sprintId ? { ...s, status: 'active' as const } : 
+        s.status === 'active' ? { ...s, status: 'completed' as const } : s
+      ));
+    } catch (error) {
+      console.error('Error starting sprint:', error);
     }
   };
 
-  const addFeature = () => {
-    if (newFeature.trim()) {
-      setPlanningData(prev => ({
-        ...prev,
-        features: [...prev.features, newFeature.trim()]
-      }));
-      setNewFeature('');
-      setShowFeatureForm(false);
+  const completeSprint = async (sprintId: string) => {
+    if (!user) return;
+    
+    try {
+      const completedSprint = await sprintService.completeActiveSprint(user.uid, boardId, sprintId);
+      setSprints(prev => prev.map(s => s.id === sprintId ? completedSprint : s));
+    } catch (error) {
+      console.error('Error completing sprint:', error);
     }
   };
 
-  const removeGoal = (index: number) => {
-    setPlanningData(prev => ({
-      ...prev,
-      goals: prev.goals.filter((_, i) => i !== index)
-    }));
+  const handleEditSprint = (sprint: Sprint) => {
+    setEditingSprint(sprint);
+    setModalOpen(true);
   };
 
-  const removeFeature = (index: number) => {
-    setPlanningData(prev => ({
-      ...prev,
-      features: prev.features.filter((_, i) => i !== index)
-    }));
+  const handleCreateSprint = () => {
+    setEditingSprint(null);
+    setModalOpen(true);
   };
+
+  const handleSprintSaved = (savedSprint: Sprint) => {
+    if (editingSprint) {
+      setSprints(prev => prev.map(s => s.id === savedSprint.id ? savedSprint : s));
+    } else {
+      setSprints(prev => [savedSprint, ...prev]);
+    }
+    setModalOpen(false);
+    setEditingSprint(null);
+  };
+
+  const canStartSprint = (sprint: Sprint) => {
+    if (sprint.status !== 'planning') return false;
+    if (activeSprint) return false;
+    
+    const today = new Date();
+    const sprintStartDate = new Date(sprint.startDate);
+    const daysDifference = Math.abs((sprintStartDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    return daysDifference <= 7;
+  };
+
+  const navigateToSprintAnalytics = (sprintNumber: number) => {
+    navigate(`/board/${boardId}/${sprintNumber}/analytics`);
+  };
+
+  const navigateToSprintRetro = (sprintNumber: number) => {
+    navigate(`/board/${boardId}/${sprintNumber}/retro`);
+  };
+
+  const navigateToSprintReflection = (sprintNumber: number) => {
+    navigate(`/board/${boardId}/${sprintNumber}/reflection`);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading sprint planning...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Sprint Overview */}
+      {/* Header */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">Sprint Planning</h2>
-            <p className="text-slate-600">Plan and organize your sprint goals, features, and capacity</p>
+            <p className="text-slate-600">Manage and track all sprints for this board</p>
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <div className={`w-2 h-2 rounded-full ${
-              saveStatus === 'saving' ? 'bg-yellow-500 animate-pulse' :
-              saveStatus === 'saved' ? 'bg-green-500' : 
-              saveStatus === 'error' ? 'bg-red-500' : 'bg-slate-300'
-            }`}></div>
-            <span className="text-slate-600">
-              {saveStatus === 'saving' ? 'Saving...' :
-               saveStatus === 'saved' ? 'Saved' :
-               saveStatus === 'error' ? 'Error' : 'Auto-save enabled'}
-            </span>
-          </div>
-        </div>
-
-        {/* Sprint Metrics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
             <div className="flex items-center gap-3">
-              <Target size={20} className="text-blue-600" />
-              <div>
-                <p className="text-sm text-blue-600 font-medium">Total Story Points</p>
-                <p className="text-2xl font-bold text-blue-800">{sprintMetrics.totalStoryPoints}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-green-50 rounded-lg border border-green-200 p-4">
-            <div className="flex items-center gap-3">
-              <Clock size={20} className="text-green-600" />
-              <div>
-                <p className="text-sm text-green-600 font-medium">Estimated Hours</p>
-                <p className="text-2xl font-bold text-green-800">{sprintMetrics.totalEstimatedHours}h</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-red-50 rounded-lg border border-purple-200 p-4">
-            <div className="flex items-center gap-3">
-              <Users size={20} className="text-purple-600" />
-              <div>
-                <p className="text-sm text-purple-600 font-medium">Team Members</p>
-                <p className="text-2xl font-bold text-purple-800">{sprintMetrics.teamMembers}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-orange-50 rounded-lg border border-orange-200 p-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle size={20} className="text-orange-600" />
-              <div>
-                <p className="text-sm text-orange-600 font-medium">Progress</p>
-                <p className="text-2xl font-bold text-orange-800">{sprintMetrics.completionPercentage}%</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Sprint Configuration */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sprint Details */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Sprint Configuration</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Sprint Objective</label>
-              <textarea
-                value={planningData.sprintObjective}
-                onChange={(e) => setPlanningData(prev => ({ ...prev, sprintObjective: e.target.value }))}
-                placeholder="What is the main objective for this sprint?"
-                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                rows={3}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Start Date</label>
-                <input
-                  type="date"
-                  value={planningData.sprintStartDate}
-                  onChange={(e) => setPlanningData(prev => ({ ...prev, sprintStartDate: e.target.value }))}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">End Date</label>
-                <input
-                  type="date"
-                  value={planningData.sprintEndDate}
-                  onChange={(e) => setPlanningData(prev => ({ ...prev, sprintEndDate: e.target.value }))}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Sprint Duration (days)</label>
-                <input
-                  type="number"
-                  value={planningData.sprintDuration}
-                  onChange={(e) => setPlanningData(prev => ({ ...prev, sprintDuration: parseInt(e.target.value) || 14 }))}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  min="1"
-                  max="30"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Team Capacity (hours/week)</label>
-                <input
-                  type="number"
-                  value={planningData.teamCapacity}
-                  onChange={(e) => setPlanningData(prev => ({ ...prev, teamCapacity: parseInt(e.target.value) || 40 }))}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  min="1"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Risk Assessment */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Risk Assessment</h3>
-          
-          <textarea
-            value={planningData.riskAssessment}
-            onChange={(e) => setPlanningData(prev => ({ ...prev, riskAssessment: e.target.value }))}
-            placeholder="Identify potential risks, dependencies, and mitigation strategies..."
-            className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-            rows={8}
-          />
-          
-          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-sm text-yellow-800">
-              <strong>Consider:</strong> External dependencies, team availability, technical challenges, 
-              unclear requirements, third-party integrations, and resource constraints.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Goals and Features */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sprint Goals */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Sprint Goals</h3>
             <button
-              onClick={() => setShowGoalForm(!showGoalForm)}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              onClick={handleBackToBoard}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors group"
             >
-              {showGoalForm ? <X size={16} /> : <Plus size={16} />}
-              {showGoalForm ? 'Cancel' : 'Add Goal'}
+              <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+              <span className="font-medium">Back to Board</span>
             </button>
-          </div>
+            <button
+              onClick={handleCreateSprint}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={16} />
+              Create Sprint
+            </button>
+            </div>
+        </div>
 
-          {showGoalForm && (
-            <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
-              <input
-                type="text"
-                value={newGoal}
-                onChange={(e) => setNewGoal(e.target.value)}
-                placeholder="Enter a sprint goal..."
-                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-3"
-                onKeyPress={(e) => e.key === 'Enter' && addGoal()}
-              />
+        {/* Active Sprint Overview */}
+        {activeSprint && (
+          <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-green-800">Active Sprint: {activeSprint.name}</h3>
+                <p className="text-sm text-green-600">
+                  {new Date(activeSprint.startDate).toLocaleDateString()} - {new Date(activeSprint.endDate).toLocaleDateString()}
+                </p>
+              </div>
               <div className="flex gap-2">
                 <button
-                  onClick={addGoal}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={() => handleEditSprint(activeSprint)}
+                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                 >
-                  Add Goal
+                  <Edit3 size={14} />
+                  Edit
                 </button>
                 <button
-                  onClick={() => setShowGoalForm(false)}
-                  className="px-4 py-2 bg-slate-300 text-slate-700 rounded-lg hover:bg-slate-400 transition-colors"
+                  onClick={() => navigateToSprintAnalytics(activeSprint.sprintNumber)}
+                  className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                 >
-                  Cancel
+                  <BarChart3 size={14} />
+                  Analytics
+                </button>
+                <button
+                  onClick={() => completeSprint(activeSprint.id)}
+                  className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                >
+                  <CheckCircle size={14} />
+                  Complete
                 </button>
               </div>
             </div>
-          )}
-
-          <div className="space-y-3">
-            {planningData.goals.length > 0 ? (
-              planningData.goals.map((goal, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <Target size={16} className="text-blue-600" />
-                    <span className="text-slate-800">{goal}</span>
-                  </div>
-                  <button
-                    onClick={() => removeGoal(index)}
-                    className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                <Target size={32} className="mx-auto mb-2 text-slate-300" />
-                <p className="text-sm">No goals defined yet</p>
-                <p className="text-xs text-slate-400">Add your first sprint goal</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-700">{activeSprint.totalStoryPoints}</div>
+                <div className="text-sm text-green-600">Story Points</div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Key Features */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Key Features</h3>
-            <button
-              onClick={() => setShowFeatureForm(!showFeatureForm)}
-              className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              {showFeatureForm ? <X size={16} /> : <Plus size={16} />}
-              {showFeatureForm ? 'Cancel' : 'Add Feature'}
-            </button>
-          </div>
-
-          {showFeatureForm && (
-            <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
-              <input
-                type="text"
-                value={newFeature}
-                onChange={(e) => setNewFeature(e.target.value)}
-                placeholder="Enter a key feature..."
-                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-3"
-                onKeyPress={(e) => e.key === 'Enter' && addFeature()}
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={addFeature}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  Add Feature
-                </button>
-                <button
-                  onClick={() => setShowFeatureForm(false)}
-                  className="px-4 py-2 bg-slate-300 text-slate-700 rounded-lg hover:bg-slate-400 transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-700">{activeSprint.duration}</div>
+                <div className="text-sm text-green-600">Days Duration</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-700">{activeSprint.teamSize}</div>
+                <div className="text-sm text-green-600">Team Members</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-700">{(activeSprint as any).teamCapacityPerWeek || 'N/A'}</div>
+                <div className="text-sm text-green-600">Capacity/Week</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-700">
+                  {Math.max(0, Math.ceil((new Date(activeSprint.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))}
+                </div>
+                <div className="text-sm text-green-600">Days Left</div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          <div className="space-y-3">
-            {planningData.features.length > 0 ? (
-              planningData.features.map((feature, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle size={16} className="text-green-600" />
-                    <span className="text-slate-800">{feature}</span>
-                  </div>
-                  <button
-                    onClick={() => removeFeature(index)}
-                    className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                <CheckCircle size={32} className="mx-auto mb-2 text-slate-300" />
-                <p className="text-sm">No features defined yet</p>
-                <p className="text-xs text-slate-400">Add your first key feature</p>
-              </div>
-            )}
+        {/* Sprint Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 text-center">
+            <div className="text-2xl font-bold text-blue-600">{sprints.length}</div>
+            <div className="text-sm text-blue-700">Total Sprints</div>
+          </div>
+          <div className="bg-green-50 rounded-lg border border-green-200 p-4 text-center">
+            <div className="text-2xl font-bold text-green-600">
+              {sprints.filter(s => s.status === 'active').length}
+            </div>
+            <div className="text-sm text-green-700">Active Sprints</div>
+          </div>
+          <div className="bg-purple-50 rounded-lg border border-purple-200 p-4 text-center">
+            <div className="text-2xl font-bold text-purple-600">
+              {sprints.filter(s => s.status === 'completed').length}
+            </div>
+            <div className="text-sm text-purple-700">Completed Sprints</div>
+          </div>
+          <div className="bg-orange-50 rounded-lg border border-orange-200 p-4 text-center">
+            <div className="text-2xl font-bold text-orange-600">{unassignedTasks.length}</div>
+            <div className="text-sm text-orange-700">Unassigned Tasks</div>
           </div>
         </div>
       </div>
 
-      {/* Capacity Planning */}
+      {/* Sprint List */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Capacity Planning</h3>
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">All Sprints</h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-            <h4 className="font-medium text-blue-800 mb-2">Total Commitment</h4>
-            <div className="text-2xl font-bold text-blue-900">{sprintMetrics.totalStoryPoints} points</div>
-            <div className="text-sm text-blue-600">{sprintMetrics.totalEstimatedHours} estimated hours</div>
+        {sprints.length > 0 ? (
+          <div className="space-y-4">
+            {sprints.map(sprint => (
+              <div key={sprint.id} className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <h4 className="font-semibold text-slate-800">{sprint.name}</h4>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      sprint.status === 'active' ? 'bg-green-100 text-green-700' :
+                      sprint.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                      sprint.status === 'planning' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {sprint.status}
+                    </span>
+                    {(sprint as any).risks && (sprint as any).risks.length > 0 && (
+                      <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                        {(sprint as any).risks.length} Risk{(sprint as any).risks.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleEditSprint(sprint)}
+                      className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
+                    >
+                      <Edit3 size={14} />
+                      {sprint.status === 'completed' ? 'View' : 'Edit'}
+                    </button>
+                    {(sprint.status === 'active' || sprint.status === 'completed') && (
+                      <>
+                        <button
+                          onClick={() => navigateToSprintAnalytics(sprint.sprintNumber)}
+                          className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                        >
+                          <BarChart3 size={14} />
+                          Analytics
+                        </button>
+                        <button
+                          onClick={() => navigateToSprintRetro(sprint.sprintNumber)}
+                          className="flex items-center gap-1 px-3 py-1 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
+                        >
+                          <MessageSquare size={14} />
+                          Retro
+                        </button>
+                        <button
+                          onClick={() => navigateToSprintReflection(sprint.sprintNumber)}
+                          className="flex items-center gap-1 px-3 py-1 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+                        >
+                          <BookOpen size={14} />
+                          Reflection
+                        </button>
+                      </>
+                    )}
+                    {sprint.status === 'planning' && canStartSprint(sprint) && (
+                      <button
+                        onClick={() => startSprint(sprint.id)}
+                        className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                      >
+                        <Play size={14} />
+                        Start Sprint
+                      </button>
+                    )}
+                    {sprint.status === 'active' && (
+                      <button
+                        onClick={() => completeSprint(sprint.id)}
+                        className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                      >
+                        <Square size={14} />
+                        Complete
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4 text-sm text-slate-600">
+                  <div>
+                    <span className="font-medium">Points:</span> {sprint.totalStoryPoints}
+                  </div>
+                  <div>
+                    <span className="font-medium">Duration:</span> {sprint.duration} days
+                  </div>
+                  <div>
+                    <span className="font-medium">Team:</span> {sprint.teamSize} members
+                  </div>
+                  <div>
+                    <span className="font-medium">Capacity:</span> {(sprint as any).teamCapacityPerWeek || 'N/A'}/wk
+                  </div>
+                  <div>
+                    <span className="font-medium">Goals:</span> {sprint.goals.length}
+                  </div>
+                  <div>
+                    <span className="font-medium">Tasks:</span> {sprint.taskIds.length}
+                  </div>
+                </div>
+
+                {(sprint.goals.length > 0 || ((sprint as any).risks && (sprint as any).risks.length > 0)) && (
+                  <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                    {sprint.goals.length > 0 && (
+                      <p className="text-sm text-slate-600">
+                        <span className="font-medium">Goals:</span> {sprint.goals.slice(0, 2).join(', ')}
+                        {sprint.goals.length > 2 && ` +${sprint.goals.length - 2} more`}
+                      </p>
+                    )}
+                    {(sprint as any).risks && (sprint as any).risks.length > 0 && (
+                      <p className="text-sm text-red-600">
+                        <span className="font-medium">Risks:</span> {(sprint as any).risks.slice(0, 2).join(', ')}
+                        {(sprint as any).risks.length > 2 && ` +${(sprint as any).risks.length - 2} more`}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-          
-          <div className="bg-green-50 rounded-lg border border-green-200 p-4">
-            <h4 className="font-medium text-green-800 mb-2">Team Capacity</h4>
-            <div className="text-2xl font-bold text-green-900">{planningData.teamCapacity * sprintMetrics.teamMembers}h</div>
-            <div className="text-sm text-green-600">{planningData.teamCapacity}h/week × {sprintMetrics.teamMembers} members</div>
+        ) : (
+          <div className="text-center py-12 text-slate-500">
+            <Target size={48} className="mx-auto mb-4 text-slate-300" />
+            <h4 className="text-lg font-medium mb-2">No sprints created yet</h4>
+            <p className="text-slate-400 mb-4">Create your first sprint to start planning and tracking work</p>
+            <button
+              onClick={handleCreateSprint}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Create First Sprint
+            </button>
           </div>
-          
-          <div className="bg-orange-50 rounded-lg border border-orange-200 p-4">
-            <h4 className="font-medium text-orange-800 mb-2">Capacity Utilization</h4>
-            <div className="text-2xl font-bold text-orange-900">
-              {((sprintMetrics.totalEstimatedHours / (planningData.teamCapacity * sprintMetrics.teamMembers)) * 100).toFixed(0)}%
-            </div>
-            <div className="text-sm text-orange-600">
-              {sprintMetrics.totalEstimatedHours > planningData.teamCapacity * sprintMetrics.teamMembers ? 'Over capacity' : 'Within capacity'}
-            </div>
-          </div>
-        </div>
+        )}
       </div>
+
+      {/* Sprint Modal */}
+      <SprintModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setEditingSprint(null);
+        }}
+        sprint={editingSprint}
+        boardId={boardId}
+        onSprintSaved={handleSprintSaved}
+        tasks={tasks}
+        teamSize={teamSize}
+      />
     </div>
   );
 };
 
-export default SprintPlanning;
+export default SprintPlanningWithModal;

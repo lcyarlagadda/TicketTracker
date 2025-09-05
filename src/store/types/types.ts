@@ -30,6 +30,8 @@ export interface Board {
   reflectionData?: ReflectionData;
   burndownData?: BurndownData; 
   sprintPlanningData?: SprintPlanningData;
+  // Add index signature to allow dynamic sprint-specific data
+  [key: string]: any;
 }
 
 
@@ -37,10 +39,110 @@ export interface ProgressLogEntry {
   desc: string;
   type: 'created' | 'status-change' | 'assignment-change' | 'description-change' | 'points-change' |
         'dueDate-change' | 'tags-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
-        'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed';
+        'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed' | 'sprint-change';
   to?: string;
   timestamp: any;
   user: string;
+}
+
+// Enhanced types for Sprint Management - Add to types.ts
+
+export interface Sprint {
+  id: string;
+  sprintNumber: number;
+  name: string;
+  goals: string[];
+  keyFeatures: string[];
+  bottlenecks: string[];
+  duration: number; // in days
+  estimatedWorkHoursPerWeek: number;
+  teamSize: number;
+  holidays: string[]; // array of holiday dates
+  finalizedCapacity: number; // calculated capacity after holidays
+  capacityUtilization: number; // percentage
+  startDate: string;
+  endDate: string;
+  status: 'planning' | 'active' | 'completed' | 'cancelled';
+  boardId: string;
+  createdAt: any;
+  createdBy: {
+    uid: string;
+    email: string;
+    name: string;
+  };
+  // Calculated fields
+  totalStoryPoints: number;
+  estimatedCapacity: number; // duration * work hours * team size
+  actualVelocity?: number; // filled when sprint completes
+  burndownData?: SprintBurndownData[];
+  taskIds: string[]; // tasks assigned to this sprint
+  risks?: string[];
+  teamCapacityPerWeek?: number;
+  completionRate?: number;
+  completedAt?: string;
+}
+
+export interface SprintBurndownData {
+  date: string;
+  remainingPoints: number;
+  idealPoints: number;
+  completedPoints: number;
+  workingDay: boolean;
+}
+
+export interface SprintMetrics {
+  totalSprints: number;
+  activeSprints: number;
+  completedSprints: number;
+  averageVelocity: number;
+  averageCapacityUtilization: number;
+  totalStoryPointsDelivered: number;
+}
+
+export interface SprintAnalytics {
+  sprint: Sprint;
+  teamPerformance: {
+    topPerformers: ContributorMetrics[];
+    teamVelocity: number;
+    burndownTrend: 'ahead' | 'on-track' | 'behind';
+    completionRate: number;
+  };
+  insights: {
+    bottlenecksIdentified: string[];
+    improvements: string[];
+    shoutouts: string[];
+  };
+}
+
+export interface CreateSprintForm {
+  sprintNumber: number;
+  name: string;
+  goals: string[];
+  keyFeatures: string[];
+  bottlenecks: string[];
+  duration: number;
+  estimatedWorkHoursPerWeek: number;
+  startDate: string;
+  endDate: string;
+  holidays: string[];
+  risks: string[];
+  teamCapacityPerWeek: number;
+}
+
+// Enhanced Board interface to include sprints
+export interface BoardWithSprints extends Board {
+  sprints?: Sprint[];
+  currentSprintId?: string;
+}
+
+// Sprint service methods interface
+export interface SprintServiceMethods {
+  createSprint(userId: string, boardId: string, sprintData: Omit<Sprint, 'id'>): Promise<Sprint>;
+  updateSprint(userId: string, boardId: string, sprintId: string, updates: Partial<Sprint>): Promise<void>;
+  fetchBoardSprints(userId: string, boardId: string): Promise<Sprint[]>;
+  deleteSprint(userId: string, boardId: string, sprintId: string): Promise<void>;
+  assignTasksToSprint(userId: string, boardId: string, sprintId: string, taskIds: string[]): Promise<void>;
+  completeActiveSprint(userId: string, boardId: string, sprintId: string): Promise<Sprint>;
 }
 
 export interface Comment {
@@ -76,6 +178,9 @@ export interface Task {
   parentTaskId?: string;
   boardId: string;
   points: number | null;
+  sprintId?: string;
+  sprintName?: string;
+  type: 'epic' | 'story' | 'bug' | 'subtask';
 }
 
 export interface CalendarTask extends Task {
@@ -197,7 +302,6 @@ export interface ShowAddForm {
   action: boolean;
 }
 
-export type TabKey = 'personal' | 'team' | 'lessons' | 'goals';
 export type TimeRange = '7d' | '30d' | '90d';
 
 export interface ReflectionData {
@@ -206,22 +310,7 @@ export interface ReflectionData {
   lessonsLearned: ReflectionItem[];
   futureGoals: ReflectionItem[];
   lastUpdated: string | null;
-}
-
-export interface NewReflectionForm {
-  content: string;
-  category: string;
-  priority: 'Low' | 'Medium' | 'High';
-  reviewType: 'self' | 'manager';
-  rating: number;
-}
-
-export interface TabConfig {
-  key: TabKey;
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  color: string;
-  description: string;
+  sprintId: string;
 }
 
 export interface ContributorMetrics {
@@ -230,6 +319,13 @@ export interface ContributorMetrics {
   pointsCompleted: number;
   averageCycleTime: number;
   efficiency: number;
+  pointsInProgress: number;
+  pointsTotal: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  todoTasks: number;
+  workload: number;
+  velocity: number;
 }
 
 export interface VelocityData {
@@ -289,6 +385,7 @@ export interface RetroData {
   lastUpdated: string;
   sprintName: string;
   facilitator: string;
+  sprintId: string;
 }
 
 export interface SprintPlanningData {
@@ -304,3 +401,276 @@ export interface SprintPlanningData {
   riskAssessment: string;
   lastUpdated: string;
 }
+
+export interface RetroComment {
+  id: string;
+  text: string;
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  likes: string[]; // Array of user emails who liked this comment
+}
+
+export interface EnhancedRetroItem {
+  id: number;
+  type: 'went-well' | 'improve' | 'action';
+  content: string;
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  votes: string[]; // Array of user emails who voted
+  assignedTo?: string;
+  dueDate?: string;
+  priority: 'Low' | 'Medium' | 'High';
+  tags: string[];
+  comments: RetroComment[];
+}
+
+export interface SprintRetroData {
+  sprintId: string;
+  sprintNumber: number;
+  items: EnhancedRetroItem[];
+  lastUpdated: string;
+  sprintName: string;
+  facilitator: string;
+}
+
+// Enhanced types for sprint-specific reflection
+export interface ReflectionComment {
+  id: string;
+  text: string;
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  likes: string[]; // Array of user emails who liked this comment
+}
+
+export interface EnhancedReflectionItem {
+  id: number;
+  content: string;
+  category: string;
+  priority: 'Low' | 'Medium' | 'High';
+  author: string;
+  authorEmail: string;
+  createdAt: string;
+  tags: string[];
+  reviewType: 'self' | 'manager';
+  rating?: number;
+  comments: ReflectionComment[];
+  likes: string[]; // Array of user emails who liked this reflection
+}
+
+export interface SprintReflectionData {
+  sprintId: string;
+  sprintNumber: number;
+  personalGrowth: EnhancedReflectionItem[];
+  teamInsights: EnhancedReflectionItem[];
+  lessonsLearned: EnhancedReflectionItem[];
+  futureGoals: EnhancedReflectionItem[];
+  lastUpdated: string;
+}
+
+export interface NewReflectionForm {
+  content: string;
+  category: string;
+  priority: 'Low' | 'Medium' | 'High';
+  reviewType: 'self' | 'manager';
+  rating: number;
+}
+
+export type TabKey = 'personal' | 'team' | 'lessons' | 'goals';
+
+export interface TabConfig {
+  key: TabKey;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  color: string;
+  description: string;
+}
+
+// Enhanced VelocityData with capacity and utilization
+export interface EnhancedVelocityData extends VelocityData {
+  capacity: number;
+  utilization: number;
+  trend: number;
+}
+
+// Mention types for comments
+export interface MentionUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface MentionTask {
+  id: string;
+  name: string;
+}
+
+// Enhanced comment types with mentions
+export interface EnhancedRetroComment extends RetroComment {
+  mentions?: {
+    users: string[];
+    tasks: string[];
+  };
+}
+
+export interface EnhancedReflectionComment extends ReflectionComment {
+  mentions?: {
+    tasks: string[];
+  };
+}
+
+// Sprint service methods for enhanced functionality
+export interface EnhancedSprintService {
+  createSprint(userId: string, boardId: string, sprintData: Omit<Sprint, 'id'>): Promise<Sprint>;
+  updateSprint(userId: string, boardId: string, sprintId: string, updates: Partial<Sprint>): Promise<void>;
+  deleteSprint(userId: string, boardId: string, sprintId: string): Promise<void>;
+  completeActiveSprint(userId: string, boardId: string, sprintId: string): Promise<Sprint>;
+  fetchBoardSprints(userId: string, boardId: string): Promise<Sprint[]>;
+  assignTasksToSprint(userId: string, boardId: string, sprintId: string, taskIds: string[]): Promise<void>;
+}
+
+// Chart data types for analytics
+export interface CycleTimeData {
+  bucket: string;
+  count: number;
+  percentage: number;
+}
+
+export interface CompletionTrendsData {
+  date: string;
+  dateFormatted: string;
+  created: number;
+  completed: number;
+  net: number;
+  cumulative: number;
+}
+
+export interface TeamHealthMetrics {
+  velocityTrend: number;
+  teamEfficiency: number;
+  workloadBalance: number;
+  avgCycleTime: number;
+  completionRate: number;
+}
+
+// Enhanced board type with sprint-specific data
+export interface EnhancedBoard extends Board {
+  [key: `sprintRetro_${string}`]: SprintRetroData;
+  [key: `sprintReflection_${string}`]: SprintReflectionData;
+}
+
+// Props for enhanced components
+export interface EnhancedSprintPlanningProps {
+  boardId: string;
+}
+
+export interface EnhancedAnalyticsProps {
+  tasks: Task[];
+  board: EnhancedBoard;
+}
+
+export interface EnhancedRetrospectiveProps {
+  board: EnhancedBoard;
+  tasks: Task[];
+}
+
+export interface EnhancedReflectionProps {
+  board: EnhancedBoard;
+  tasks: Task[];
+}
+
+// Utility types for form states
+export type ViewMode = 'list' | 'create' | 'edit';
+export type ChartType = 'velocity' | 'contributors' | 'cycle-time' | 'completion-trends';
+
+// Enhanced mention dropdown props
+export interface MentionDropdownProps {
+  isOpen: boolean;
+  position: { top: number; left: number };
+  type: 'users' | 'tasks';
+  options: Array<{ id: string; name: string; email?: string }>;
+  onSelect: (option: { id: string; name: string }) => void;
+  onClose: () => void;
+}
+
+// Smart input props for mentions
+export interface SmartInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  users?: MentionUser[];
+  tasks: MentionTask[];
+  className?: string;
+  rows?: number;
+  isTextarea?: boolean;
+}
+
+// Mention state for tracking input
+export interface MentionState {
+  isOpen: boolean;
+  type: 'users' | 'tasks' | null;
+  position: { top: number; left: number };
+  searchTerm: string;
+  startIndex: number;
+}
+
+// Enhanced save status type
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+// Chart configuration type
+export interface ChartConfig {
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  description: string;
+}
+
+// Color configuration for charts
+export const CHART_COLORS = {
+  primary: '#3B82F6',
+  success: '#10B981', 
+  warning: '#F59E0B',
+  danger: '#EF4444',
+  purple: '#8B5CF6',
+  cyan: '#06B6D4',
+  orange: '#F97316',
+  lime: '#84CC16'
+} as const;
+
+// Sprint status type with enhanced states
+export type EnhancedSprintStatus = 'planning' | 'active' | 'completed' | 'cancelled';
+
+// Task priority with story points mapping
+export const PRIORITY_POINTS = {
+  'Low': 3,
+  'Medium': 5,
+  'High': 8
+} as const;
+
+// Cycle time buckets for analytics
+export const CYCLE_TIME_BUCKETS = [
+  '≤1 day',
+  '2-3 days', 
+  '4-7 days',
+  '1-2 weeks',
+  '>2 weeks'
+] as const;
+
+// Health indicator thresholds
+export const HEALTH_THRESHOLDS = {
+  cycleTime: {
+    excellent: 3,
+    good: 7
+  },
+  efficiency: {
+    excellent: 80,
+    good: 60
+  },
+  completionRate: {
+    excellent: 80,
+    good: 60
+  }
+} as const;
