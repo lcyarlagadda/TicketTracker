@@ -16,6 +16,7 @@ class AuthService {
             uid: firebaseUser.uid,
             email: firebaseUser.email!,
             displayName: firebaseUser.displayName || undefined,
+            emailVerified: firebaseUser.emailVerified,
           }
         : null;
       

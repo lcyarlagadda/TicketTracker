@@ -3,6 +3,7 @@ export interface User {
   uid: string;
   email: string;
   displayName?: string | null;
+  emailVerified?: boolean;
 }
 
 export interface Collaborator {
@@ -654,7 +655,7 @@ export const PRIORITY_POINTS = {
 
 // Cycle time buckets for analytics
 export const CYCLE_TIME_BUCKETS = [
-  '≤1 day',
+  'â‰¤1 day',
   '2-3 days', 
   '4-7 days',
   '1-2 weeks',
