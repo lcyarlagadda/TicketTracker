@@ -1,7 +1,7 @@
 // components/Templates/TaskCard.tsx
 import React, { useState, useEffect } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
-import { Pencil, Trash2, UserCircle, Calendar, CheckSquare, Square, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Trash2, UserCircle, Calendar, CheckSquare, Square, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
 import { deleteTask } from '../../store/slices/taskSlice';
 import { taskService } from '../../services/taskService';
@@ -21,6 +21,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [childTasks, setChildTasks] = useState<Task[]>([]);
   const [showSubtasks, setShowSubtasks] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const priorityConfig = {
     Low: { 
@@ -43,7 +44,47 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
     },
   };
 
+  const taskTypeConfig = {
+    epic: { 
+      bg: 'bg-violet-100',
+      text: 'text-violet-700',
+      border: 'border-violet-200',
+      label: 'Epic'
+    },
+    feature: { 
+      bg: 'bg-blue-100',
+      text: 'text-blue-700',
+      border: 'border-blue-200',
+      label: 'Feature'
+    },
+    story: { 
+      bg: 'bg-green-100',
+      text: 'text-green-700',
+      border: 'border-green-200',
+      label: 'Story'
+    },
+    bug: { 
+      bg: 'bg-red-100',
+      text: 'text-red-700',
+      border: 'border-red-200',
+      label: 'Bug'
+    },
+    enhancement: { 
+      bg: 'bg-orange-100',
+      text: 'text-orange-700',
+      border: 'border-orange-200',
+      label: 'Enhancement'
+    },
+    subtask: { 
+      bg: 'bg-gray-100',
+      text: 'text-gray-700',
+      border: 'border-gray-200',
+      label: 'Subtask'
+    },
+  };
+
   const config = priorityConfig[task.priority] || priorityConfig.Low;
+  const typeConfig = taskTypeConfig[task.type as keyof typeof taskTypeConfig] || taskTypeConfig.story;
 
   // Listen to child tasks
   useEffect(() => {
@@ -107,6 +148,19 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
     setShowSubtasks(!showSubtasks);
   };
 
+  const handleCopyTaskId = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    try {
+      await navigator.clipboard.writeText(task.id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy task ID:', err);
+    }
+  };
+
   const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done';
 
   return (
@@ -134,10 +188,23 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
             <div className={`h-1 bg-gradient-to-r ${config.gradient}`}></div>
             
             <div className="p-4">
+              {/* Header with Task ID and Actions */}
               <div className="flex justify-between items-start mb-3">
-                <h4 className="font-bold text-slate-800 leading-tight flex-1 pr-2 group-hover:text-slate-900 transition-colors">
-                  {task.title}
-                </h4>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopyTaskId}
+                    className="flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono text-slate-600 transition-colors"
+                    title="Copy Task ID"
+                  >
+                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {task.id.slice(-8)}
+                  </button>
+                  <div className={`px-2 py-1 rounded-lg ${typeConfig.bg} ${typeConfig.border} border`}>
+                    <span className={`text-xs font-semibold ${typeConfig.text}`}>
+                      {typeConfig.label}
+                    </span>
+                  </div>
+                </div>
                 
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
                   <button
@@ -156,6 +223,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                   </button>
                 </div>
               </div>
+
+              {/* Task Title */}
+              <h4 className="font-bold text-slate-800 leading-tight mb-3 group-hover:text-slate-900 transition-colors">
+                {task.title}
+              </h4>
 
               {childTasks.length > 0 && (
                 <div className="mb-3">
@@ -248,19 +320,19 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                 )}
               </div>
               
-              {task.tags?.length > 0 && (
+              {task.epics?.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {task.tags.slice(0, 3).map((tag, idx) => (
+                  {task.epics.slice(0, 2).map((epic, idx) => (
                     <span
                       key={idx}
-                      className="text-xs text-slate-600 bg-slate-100 rounded-full px-2 py-1"
+                      className="text-xs text-purple-600 bg-purple-100 rounded-full px-2 py-1 border border-purple-200"
                     >
-                      #{tag}
+                      {epic}
                     </span>
                   ))}
-                  {task.tags.length > 3 && (
+                  {task.epics.length > 2 && (
                     <span className="text-xs text-slate-500 bg-slate-50 rounded-full px-2 py-1">
-                      +{task.tags.length - 3}
+                      +{task.epics.length - 2}
                     </span>
                   )}
                 </div>

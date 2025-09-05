@@ -30,8 +30,6 @@ const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
   ).length;
 
   const upcomingTasks = mainTasks.filter(t => {
-    console.log("User", user)
-    console.log("User", mainTasks)
     if (!t.dueDate || t.status === 'done' || t.status === 'completed' || t.assignedTo !== user?.uid) return false;
     const taskDate = new Date(t.dueDate);
     const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);

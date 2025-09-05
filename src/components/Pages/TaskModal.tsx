@@ -1,4 +1,4 @@
-// components/Modals/TaskModal.tsx - Enhanced version with Sprint Management
+// components/Modals/TaskModal.tsx - Enhanced version with Task Types and Epics
 import React, { useEffect, useState } from "react";
 import {
   X,
@@ -6,7 +6,6 @@ import {
   User,
   MessageCircle,
   FileText,
-  Tag,
   Save,
   Edit3,
   Clock,
@@ -24,6 +23,9 @@ import {
   Check,
   Hash,
   Zap,
+  Layers,
+  Crown,
+  Copy,
 } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
@@ -39,6 +41,7 @@ import {
   FileAttachment,
   Collaborator,
   Sprint,
+  TaskType,
 } from "../../store/types/types";
 import ConfirmModal from "../Atoms/ConfirmModal";
 import CustomDropdown from "../Atoms/CustomDropDown";
@@ -56,17 +59,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
   const { user } = useAppSelector((state) => state.auth);
   const { currentBoard } = useAppSelector((state) => state.boards);
   const [isVisible, setIsVisible] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Form state
   const [title, setTitle] = useState(task.title || "");
   const [priority, setPriority] = useState(task.priority || "Medium");
   const [points, setPoints] = useState(task.points || 3);
+  const [taskType, setTaskType] = useState(task.type || "story");
   const [description, setDescription] = useState(task.description || "");
   const [assignedTo, setAssignedTo] = useState(task.assignedTo || "");
   const [dueDate, setDueDate] = useState(task.dueDate || "");
-  const [tags, setTags] = useState<string[]>(task.tags || []);
-  const [newTag, setNewTag] = useState("");
-  const [showTagInput, setShowTagInput] = useState(false);
+  const [epics, setEpics] = useState<string[]>(task.epics || []);
+  const [newEpic, setNewEpic] = useState("");
+  const [showEpicInput, setShowEpicInput] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -77,10 +82,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
   const [sprintId, setSprintId] = useState(task.sprintId || "");
   const [editingSprint, setEditingSprint] = useState(false);
 
-  // Edit state for title, priority, and points
+  // Edit state for title, priority, points, and type
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingPriority, setEditingPriority] = useState(false);
   const [editingPoints, setEditingPoints] = useState(false);
+  const [editingType, setEditingType] = useState(false);
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>(task.comments || []);
@@ -136,7 +142,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
   // Get current sprint info
   const currentSprint = sprintId ? sprints.find(s => s.id === sprintId) : null;
   const activeSprints = sprints.filter(s => s.status === 'active' || s.status === 'planning');
-  console.log("Active sprints", {sprints, currentSprint, sprintId});
 
   // Sprint options
   const sprintOptions = [
@@ -147,6 +152,55 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }))
   ];
 
+  // Get existing epics from all tasks in the board
+  const existingEpics = React.useMemo(() => {
+    if (!currentBoard) return [];
+    // This would need to be passed from the parent component
+    // For now, return empty array
+    return [];
+  }, [currentBoard]);
+
+  const taskTypeConfig = {
+    epic: { 
+      bg: 'bg-violet-100',
+      text: 'text-violet-700',
+      border: 'border-violet-200',
+      label: 'Epic'
+    },
+    feature: { 
+      bg: 'bg-blue-100',
+      text: 'text-blue-700',
+      border: 'border-blue-200',
+      label: 'Feature'
+    },
+    story: { 
+      bg: 'bg-green-100',
+      text: 'text-green-700',
+      border: 'border-green-200',
+      label: 'Story'
+    },
+    bug: { 
+      bg: 'bg-red-100',
+      text: 'text-red-700',
+      border: 'border-red-200',
+      label: 'Bug'
+    },
+    enhancement: { 
+      bg: 'bg-orange-100',
+      text: 'text-orange-700',
+      border: 'border-orange-200',
+      label: 'Enhancement'
+    },
+    subtask: { 
+      bg: 'bg-gray-100',
+      text: 'text-gray-700',
+      border: 'border-gray-200',
+      label: 'Subtask'
+    },
+  };
+
+  const typeConfig = taskTypeConfig[taskType as keyof typeof taskTypeConfig] || taskTypeConfig.story;
+
   const closeModal = () => {
     if (unsavedChanges) {
       setShowWarning(true);
@@ -154,6 +208,16 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
     setIsVisible(false);
     setTimeout(() => onClose(), 200);
+  };
+
+  const handleCopyTaskId = async () => {
+    try {
+      await navigator.clipboard.writeText(task.id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy task ID:', err);
+    }
   };
 
   // Title validation function
@@ -212,6 +276,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
+  // Handle type save
+  const handleSaveType = () => {
+    setEditingType(false);
+    if (taskType !== task.type) {
+      setUnsavedChanges(true);
+    }
+  };
+
   // Handle sprint save
   const handleSaveSprint = () => {
     setEditingSprint(false);
@@ -238,12 +310,45 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     setEditingPoints(false);
   };
 
+  // Handle type cancel
+  const handleCancelType = () => {
+    setTaskType(task.type || "story");
+    setEditingType(false);
+  };
+
   // Handle sprint cancel
   const handleCancelSprint = () => {
     setSprintId(task.sprintId || "");
     setEditingSprint(false);
   };
 
+  // Epic management functions
+  const handleAddEpic = () => {
+    const epicName = newEpic.trim();
+    if (!epicName) return;
+
+    if (epics.includes(epicName)) {
+      setErrorMessage("This epic is already added.");
+      return;
+    }
+
+    if (epics.length >= 3) {
+      setErrorMessage("Maximum 3 epics allowed per task.");
+      return;
+    }
+
+    setEpics(prev => [...prev, epicName]);
+    setNewEpic("");
+    setShowEpicInput(false);
+    setUnsavedChanges(true);
+  };
+
+  const handleRemoveEpic = (epicToRemove: string) => {
+    setEpics(prev => prev.filter(epic => epic !== epicToRemove));
+    setUnsavedChanges(true);
+  };
+
+  // ... (keeping all the existing child task management functions unchanged) ...
   const validateSubtaskForm = (
     formData: typeof newChildTask
   ): string | null => {
@@ -333,7 +438,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     executeAddChildTask();
   };
 
-  // 4. Separate execution function for adding child task
+  // Separate execution function for adding child task
   const executeAddChildTask = async () => {
     if (!user || !currentBoard) return;
 
@@ -346,10 +451,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         status: "todo",
         assignedTo: newChildTask.assignedTo,
         parentTaskId: task.id,
-        tags: [],
+        epics: [], // Subtasks don't inherit epics
         comments: [],
         files: [],
         points: 3, // Default points for subtasks
+        type: "subtask" as TaskType, // Always set subtasks as subtask type
         progressLog: [
           {
             type: "created" as const,
@@ -365,7 +471,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         },
         createdAt: Timestamp.now(),
         boardId: currentBoard.id,
-        type: "subtask" as const
       };
 
       await dispatch(
@@ -419,7 +524,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
-  // 5. Updated handleSaveChildTask with Error Modal
+  // ... (keeping all other existing functions for child task management) ...
   const handleSaveChildTask = async (childTaskId: string) => {
     // Validation with error modal
     if (!editChildTaskData.title.trim()) {
@@ -489,7 +594,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
-  // 6. Separate execution function for saving child task
+  // Separate execution function for saving child task
   const executeSaveChildTask = async (childTaskId: string) => {
     if (!user || !currentBoard) return;
 
@@ -595,7 +700,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
-  // 7. Updated handleDeleteChildTask (no confirm needed, using confirm modal)
+  // Updated handleDeleteChildTask (no confirm needed, using confirm modal)
   const handleDeleteChildTask = async (
     childTaskId: string,
     childTaskTitle: string
@@ -637,7 +742,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
-  // 8. Updated handleToggleChildTask with error modal
+  // Updated handleToggleChildTask with error modal
   const handleToggleChildTask = async (
     childTaskId: string,
     currentStatus: string
@@ -701,6 +806,17 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
+  const handleEditChildTask = (childTask: Task) => {
+    setEditingChildTask(childTask.id);
+    setEditChildTaskData({
+      title: childTask.title,
+      description: childTask.description || "",
+      assignedTo: childTask.assignedTo || "",
+      dueDate: childTask.dueDate || "",
+      priority: childTask.priority || "Medium",
+    });
+  };
+
   const handleSave = async () => {
     if (!user || !currentBoard) return;
 
@@ -719,6 +835,17 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         newLogEntries.push({
           type: "title-change" as const,
           desc: `Title changed from "${task.title}" to "${title.trim()}"`,
+          timestamp: Timestamp.now(),
+          user: user.displayName || user.email,
+        });
+      }
+
+      // Check for task type changes
+      if (taskType !== task.type) {
+        updates.type = taskType;
+        newLogEntries.push({
+          type: "type-change" as const,
+          desc: `Task type changed from ${task.type} to ${taskType}`,
           timestamp: Timestamp.now(),
           user: user.displayName || user.email,
         });
@@ -803,13 +930,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       }
 
       if (
-        JSON.stringify([...tags].sort()) !==
-        JSON.stringify([...(task.tags || [])].sort())
+        JSON.stringify([...epics].sort()) !==
+        JSON.stringify([...(task.epics || [])].sort())
       ) {
-        updates.tags = tags;
+        updates.epics = epics;
         newLogEntries.push({
-          type: "tags-change" as const,
-          desc: "Tags updated",
+          type: "epics-change" as const,
+          desc: "Epics updated",
           timestamp: Timestamp.now(),
           user: user.displayName || user.email,
         });
@@ -859,17 +986,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
-  const handleEditChildTask = (childTask: Task) => {
-    setEditingChildTask(childTask.id);
-    setEditChildTaskData({
-      title: childTask.title,
-      description: childTask.description || "",
-      assignedTo: childTask.assignedTo || "",
-      dueDate: childTask.dueDate || "",
-      priority: childTask.priority || "Medium",
-    });
-  };
-
   const handleAddComment = async () => {
     if (!commentText.trim()) return;
 
@@ -915,14 +1031,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
 
   const progress = getChildTasksProgress();
 
-  const priorityColors = {
-    Low: "from-green-400 to-green-600",
-    Medium: "from-yellow-400 to-orange-500",
-    High: "from-red-400 to-red-600",
-  };
-
   // Story point options (Fibonacci sequence)
   const storyPointOptions = ['1', '2', '3', '5', '8', '13', '21'];
+
+  // Task type options
+  const taskTypeOptions = task.parentTaskId 
+    ? ["subtask"] // If it's a subtask, only allow subtask
+    : ["epic", "feature", "story", "bug", "enhancement"];
 
   return (
     <div
@@ -940,177 +1055,111 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
           <div className="absolute inset-0 bg-white/10"></div>
           <div className="relative flex justify-between items-start">
             <div className="flex-1">
-              {/* Editable Title */}
-              <div className="mb-2">
-                {editingTitle ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          handleSaveTitle();
-                        } else if (e.key === "Escape") {
-                          handleCancelTitle();
-                        }
-                      }}
-                      className="text-2xl font-bold bg-white/20 text-white placeholder-white/70 border-2 border-white/30 rounded-lg px-3 py-1 focus:outline-none focus:border-white/50 flex-1"
-                      placeholder="Task title"
-                      autoFocus
-                    />
-                    <button
-                      onClick={handleSaveTitle}
-                      className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-                      title="Save title"
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button
-                      onClick={handleCancelTitle}
-                      className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
-                      title="Cancel"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                    <div className="flex items-center gap-2 group">
-                    <h2 className="text-2xl font-bold text-white flex-1">
-                      {title}
-                      <button
-                      onClick={() => setEditingTitle(true)}
-                      className="ml-2 p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
-                      title="Edit title"
-                      style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}
-                      >
-                      <Edit3 size={16} />
-                      </button>
-                    </h2>
-                    </div>
-                )}
-              </div>
 
-              <div className="flex items-center gap-4 text-blue-100 text-sm">
-                <span className="flex items-center gap-2">
-                  <User size={14} />
-                  Created by {task.createdBy?.name || task.createdBy?.email}
-                </span>
-                <span className="flex items-center gap-2">
-                  <Clock size={14} />
-                  {task.createdAt?.toDate?.()?.toLocaleDateString?.() || "N/A"}
-                </span>
-                {childTasks.length > 0 && (
-                  <span className="flex items-center gap-2">
-                    <CheckSquare size={14} />
-                    {progress.completed}/{progress.total} subtasks
-                  </span>
-                )}
-                {/* Sprint Info */}
-                {currentSprint && (
-                  <span className="flex items-center gap-2 px-2 py-1 bg-white/20 rounded-full">
-                    <Zap size={14} />
-                    Sprint {currentSprint.sprintNumber}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Editable Priority */}
-              {editingPriority ? (
-                <div className="flex items-center gap-2">
-                  <CustomDropdown
-                    options={["Low", "Medium", "High"]}
-                    selected={priority}
-                    setSelected={(val) =>
-                      setPriority(val as "Low" | "Medium" | "High")
-                    }
-                    placeholder="Priority"
-                    className="w-32 z-50"
-                  />
-                  <button
-                    onClick={handleSavePriority}
-                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-                    title="Save priority"
-                  >
-                    <Check size={16} />
-                  </button>
-                  <button
-                    onClick={handleCancelPriority}
-                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
-                    title="Cancel"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <div
-                    className={`px-3 py-1 rounded-full bg-gradient-to-r ${
-                      priorityColors[priority as keyof typeof priorityColors]
-                    } text-white text-sm font-semibold shadow-lg`}
-                  >
-                    {priority} Priority
-                  </div>
-                  <button
-                    onClick={() => setEditingPriority(true)}
-                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
-                    title="Edit priority"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                </div>
-              )}
-
-              {/* Editable Story Points */}
-              {editingPoints ? (
-                <div className="flex items-center gap-2">
-                  <CustomDropdown
-                    options={storyPointOptions}
-                    selected={points.toString()}
-                    setSelected={(val) => setPoints(parseInt(val))}
-                    placeholder="Points"
-                    className="w-24"
-                  />
-                  <button
-                    onClick={handleSavePoints}
-                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-                    title="Save points"
-                  >
-                    <Check size={16} />
-                  </button>
-                  <button
-                    onClick={handleCancelPoints}
-                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
-                    title="Cancel"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <div className="px-3 py-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-sm font-semibold shadow-lg flex items-center gap-1">
-                    <Hash size={14} />
-                    {points} {points === 1 ? 'Point' : 'Points'}
-                  </div>
-                  <button
-                    onClick={() => setEditingPoints(true)}
-                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
-                    title="Edit story points"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                </div>
-              )}
-
+          {/* Editable Title and Task Info Row (Title left, Task ID/Type right) */}
+          <div className="flex items-start justify-between mb-2 gap-4 flex-wrap">
+          {/* Title (editable) */}
+          <div className="flex-1 min-w-0">
+            {editingTitle ? (
+            <div className="flex items-center gap-2">
+              <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                handleSaveTitle();
+                } else if (e.key === "Escape") {
+                handleCancelTitle();
+                }
+              }}
+              className="text-2xl font-bold bg-white/20 text-white placeholder-white/70 border-2 border-white/30 rounded-lg px-3 py-1 focus:outline-none focus:border-white/50 flex-1"
+              placeholder="Task title"
+              autoFocus
+              />
               <button
-                onClick={closeModal}
-                className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all duration-200 hover:scale-110"
+              onClick={handleSaveTitle}
+              className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
+              title="Save title"
               >
-                <X size={20} />
+              <Check size={16} />
+              </button>
+              <button
+              onClick={handleCancelTitle}
+              className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+              title="Cancel"
+              >
+              <X size={16} />
               </button>
             </div>
+            ) : (
+            <div className="flex items-center gap-2 group">
+              <h2 className="text-2xl font-bold text-white flex-1 truncate">
+              {title}
+              <button
+                onClick={() => setEditingTitle(true)}
+                className="ml-2 p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
+                title="Edit title"
+                style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}
+              >
+                <Edit3 size={16} />
+              </button>
+              </h2>
+            </div>
+            )}
+          </div>
+          {/* Task ID and Type Row (right) */}
+          <div className="flex items-center gap-3 flex-shrink-0 mt-2 md:mt-0">
+            <button
+            onClick={handleCopyTaskId}
+            className="flex items-center gap-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-white transition-colors"
+            title="Copy Task ID"
+            >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            <span className="font-mono text-sm">{task.id.slice(-8)}</span>
+            </button>
+            <div className={`px-3 py-1 rounded-lg ${typeConfig.bg} border border-white/30`}>
+            <span className={`text-sm font-semibold text-slate-700`}>
+              {typeConfig.label}
+            </span>
+            </div>
+            {/* Sprint Info */}
+            {currentSprint && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-white/20 rounded-lg">
+              <Zap size={14} />
+              <span className="text-sm font-medium">Sprint {currentSprint.sprintNumber}</span>
+            </div>
+            )}
+          </div>
+          </div>
+
+              <div className="flex items-center gap-4 text-blue-100 text-sm">
+          <span className="flex items-center gap-2">
+            <User size={14} />
+            Created by {task.createdBy?.name || task.createdBy?.email}
+          </span>
+          <span className="flex items-center gap-2">
+            <Clock size={14} />
+            {task.createdAt?.toDate?.()?.toLocaleDateString?.() || "N/A"}
+          </span>
+          {childTasks.length > 0 && (
+            <span className="flex items-center gap-2">
+              <CheckSquare size={14} />
+              {progress.completed}/{progress.total} subtasks
+            </span>
+          )}
+              </div>
+            </div>
+
+            {/* Add space between tasktype and close button */}
+            <div className="ml-6"></div>
+
+            <button
+              onClick={closeModal}
+              className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all duration-200 hover:scale-110"
+            >
+              <X size={20} />
+            </button>
           </div>
         </div>
 
@@ -1136,7 +1185,178 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
             />
           </div>
 
-                    {/* Sprint Assignment */}
+                    {/* Task Type, Priority, and Story Points Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {/* Task Type */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-slate-200">
+                  <Layers size={18} className="text-slate-600" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Task Type</h3>
+              </div>
+              
+              {editingType ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <CustomDropdown
+                      options={taskTypeOptions}
+                      selected={taskType}
+                      setSelected={(val) => setTaskType(val as TaskType)}
+                      placeholder="Select type"
+                      className="w-full"
+                      disabled={task.parentTaskId ? true : false}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSaveType}
+                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
+                    title="Save type"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    onClick={handleCancelType}
+                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                    title="Cancel"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between py-2 px-4 bg-slate-50 rounded-xl border border-slate-200 group">
+                  <div className={`px-3 py-1 rounded-lg ${typeConfig.bg} ${typeConfig.border} border`}>
+                    <span className={`text-sm font-semibold ${typeConfig.text}`}>
+                      {typeConfig.label}
+                    </span>
+                  </div>
+                  {!task.parentTaskId && (
+                    <button
+                      onClick={() => setEditingType(true)}
+                      className="p-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Change task type"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Priority */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-orange-100">
+                  <Target size={18} className="text-orange-600" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Priority</h3>
+              </div>
+              
+              {editingPriority ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <CustomDropdown
+                      options={["Low", "Medium", "High"]}
+                      selected={priority}
+                      setSelected={(val) =>
+                        setPriority(val as "Low" | "Medium" | "High")
+                      }
+                      placeholder="Priority"
+                      className="w-full"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSavePriority}
+                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
+                    title="Save priority"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    onClick={handleCancelPriority}
+                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                    title="Cancel"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between py-2 px-4 bg-orange-50 rounded-xl border border-orange-200 group">
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="font-semibold text-orange-800">
+                        {priority} Priority
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setEditingPriority(true)}
+                    className="p-2 rounded-lg bg-orange-200 hover:bg-orange-300 text-orange-700 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Change priority"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Story Points */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-indigo-100">
+                  <Hash size={18} className="text-indigo-600" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Story Points</h3>
+              </div>
+              
+              {editingPoints ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <CustomDropdown
+                      options={storyPointOptions}
+                      selected={points.toString()}
+                      setSelected={(val) => setPoints(parseInt(val))}
+                      placeholder="Points"
+                      className="w-full"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSavePoints}
+                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
+                    title="Save points"
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    onClick={handleCancelPoints}
+                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                    title="Cancel"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between py-2 px-4 bg-indigo-50 rounded-xl border border-indigo-200 group">
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="font-semibold text-indigo-800">
+                        {points} {points === 1 ? 'Point' : 'Points'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setEditingPoints(true)}
+                    className="p-2 rounded-lg bg-indigo-200 hover:bg-indigo-300 text-indigo-700 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Change story points"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sprint Assignment */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <div className="p-2 rounded-lg bg-purple-100">
@@ -1240,9 +1460,74 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
             </div>
           </div>
 
-          {/* Rest of the content remains the same - Child Tasks, Tags, Files, Activity History, Comments sections */}
-          {/* ... (keeping the rest of the component exactly as it was) ... */}
+          {/* Epics Section */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-purple-100">
+                  <Crown size={18} className="text-purple-600" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Epics</h3>
+              </div>
+              <button
+                onClick={() => setShowEpicInput(!showEpicInput)}
+                className="p-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 transition-colors"
+              >
+                {showEpicInput ? <X size={16} /> : <Plus size={16} />}
+              </button>
+            </div>
 
+            {epics.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {epics.map((epic, index) => (
+                  <span
+                    key={index}
+                    className="flex items-center gap-2 text-sm text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-3 py-1"
+                  >
+                    {epic}
+                    <button
+                      onClick={() => handleRemoveEpic(epic)}
+                      className="hover:bg-purple-200 rounded-full p-1 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {showEpicInput && (
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newEpic}
+                    onChange={(e) => setNewEpic(e.target.value)}
+                    placeholder="Enter epic name"
+                    className="flex-1 border-2 border-purple-200 rounded-lg px-3 py-2 text-sm focus:border-purple-500 focus:outline-none transition-colors"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddEpic();
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={handleAddEpic}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+                
+                <p className="text-xs text-purple-600">
+                  {epics.length}/3 epics (helps organize work into larger initiatives)
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Rest of the content remains the same - Child Tasks, Files, Activity History, Comments sections */}
           {/* Child Tasks */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
@@ -1707,66 +1992,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
             )}
           </div>
 
-          {/* Tags */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-orange-100">
-                  <Tag size={18} className="text-orange-600" />
-                </div>
-                <h3 className="font-semibold text-slate-800">Tags</h3>
-              </div>
-              <button
-                onClick={() => setShowTagInput(!showTagInput)}
-                className="p-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-              >
-                {showTagInput ? <X size={16} /> : <Plus size={16} />}
-              </button>
-            </div>
-
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2 shadow-md"
-                  >
-                    #{tag}
-                    <button
-                      onClick={() => {
-                        setTags(tags.filter((_, i) => i !== index));
-                        setUnsavedChanges(true);
-                      }}
-                      className="hover:bg-white/20 rounded-full p-1 transition-colors"
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {showTagInput && (
-              <input
-                type="text"
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newTag.trim()) {
-                    setTags([...tags, newTag.trim()]);
-                    setNewTag("");
-                    setShowTagInput(false);
-                    setUnsavedChanges(true);
-                    e.preventDefault();
-                  }
-                }}
-                placeholder="Type tag and press Enter"
-                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all duration-200"
-                autoFocus
-              />
-            )}
-          </div>
-
           {/* Files Section */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -1874,7 +2099,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                           {log.desc}
                         </p>
                         <div className="text-xs text-slate-500 mt-1">
-                          {log.user || "System"} â€¢{" "}
+                          {log.user || "System"} •{" "}
                           {log.timestamp?.toDate?.()?.toLocaleString?.() || ""}
                         </div>
                       </div>

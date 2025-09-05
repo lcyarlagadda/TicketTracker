@@ -1,4 +1,4 @@
-// components/Pages/TaskBoard.tsx - Enhanced with Sprint Management
+// components/Pages/TaskBoard.tsx - Enhanced with Sprint Management, Task Types, and Epic Support
 import React, { useEffect, useState, useMemo } from "react";
 import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd";
 import {
@@ -11,7 +11,7 @@ import {
   Search,
   Filter,
   UserCheck,
-  Tag,
+  Crown,
   UserRound,
   BarChart3,
   MessageSquare,
@@ -88,13 +88,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedEpics, setSelectedEpics] = useState<string[]>([]);
   const [selectedSprints, setSelectedSprints] = useState<string[]>([]);
 
   // Current active sprint for board header
   const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
 
-  // Get unique assignees, tags, and sprints from tasks
+  // Get unique assignees, epics, and sprints from tasks
   const uniqueAssignees = useMemo(() => {
     const assignees = new Set<string>();
     tasks.forEach((task) => {
@@ -105,14 +105,17 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     return Array.from(assignees);
   }, [tasks]);
 
-  const uniqueTags = useMemo(() => {
-    const tags = new Set<string>();
+  const uniqueEpics = useMemo(() => {
+    const epics = new Set<string>();
     tasks.forEach((task) => {
-      if (task.tags && task.tags.length > 0) {
-        task.tags.forEach((tag) => tags.add(tag));
+      if (task.epics && task.epics.length > 0) {
+        task.epics.forEach((epic) => epics.add(epic));
+      }
+      if(task.type === "epic" && task.title) {
+        epics.add(task.title);
       }
     });
-    return Array.from(tags);
+    return Array.from(epics);
   }, [tasks]);
 
   const uniqueSprints = useMemo(() => {
@@ -148,10 +151,10 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         selectedAssignees.length === 0 ||
         (task.assignedTo && selectedAssignees.includes(task.assignedTo));
 
-      // Tags filter
-      const matchesTags =
-        selectedTags.length === 0 ||
-        (task.tags && task.tags.some((tag) => selectedTags.includes(tag)));
+      // Epic filter
+      const matchesEpic =
+        selectedEpics.length === 0 ||
+        (task.epics && task.epics.some((epic) => selectedEpics.includes(epic))) || task.type === "epic" && task.title && selectedEpics.includes(task.title);
 
       // Sprint filter
       const matchesSprint =
@@ -162,13 +165,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
           )) ||
         (!task.sprintId && selectedSprints.includes("Backlog"));
 
-      return matchesSearch && matchesAssignee && matchesTags && matchesSprint;
+      return matchesSearch && matchesAssignee && matchesEpic && matchesSprint;
     });
   }, [
     tasks,
     searchTerm,
     selectedAssignees,
-    selectedTags,
+    selectedEpics,
     selectedSprints,
     sprints,
   ]);
@@ -531,14 +534,14 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const clearFilters = () => {
     setSearchTerm("");
     setSelectedAssignees([]);
-    setSelectedTags([]);
+    setSelectedEpics([]);
     setSelectedSprints([]);
   };
 
   const hasActiveFilters =
     searchTerm !== "" ||
     selectedAssignees.length > 0 ||
-    selectedTags.length > 0 ||
+    selectedEpics.length > 0 ||
     selectedSprints.length > 0;
 
   if (loading || !currentBoard) {
@@ -794,12 +797,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
               setShowFilters={setShowFilters}
               selectedAssignees={selectedAssignees}
               setSelectedAssignees={setSelectedAssignees}
-              selectedTags={selectedTags}
-              setSelectedTags={setSelectedTags}
+              selectedEpics={selectedEpics}
+              setSelectedEpics={setSelectedEpics}
               selectedSprints={selectedSprints}
               setSelectedSprints={setSelectedSprints}
               uniqueAssignees={uniqueAssignees}
-              uniqueTags={uniqueTags}
+              uniqueEpics={uniqueEpics}
               uniqueSprints={uniqueSprints}
               hasActiveFilters={hasActiveFilters}
               clearFilters={clearFilters}

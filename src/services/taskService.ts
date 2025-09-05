@@ -122,6 +122,8 @@ class TaskService {
         ],
       };
 
+      console.log("Creating task with data:", newTask);
+
       const docRef = await addDoc(
         collection(db, 'users', userId, 'boards', boardId, 'tasks'),
         newTask

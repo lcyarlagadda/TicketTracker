@@ -38,8 +38,8 @@ export interface Board {
 export interface ProgressLogEntry {
   desc: string;
   type: 'created' | 'status-change' | 'assignment-change' | 'description-change' | 'points-change' |
-        'dueDate-change' | 'tags-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
-        'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed' | 'sprint-change';
+        'dueDate-change' | 'epics-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
+        'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed' | 'sprint-change'| 'type-change';
   to?: string;
   timestamp: any;
   user: string;
@@ -164,7 +164,7 @@ export interface Task {
   priority: 'Low' | 'Medium' | 'High';
   dueDate: string;
   status: string;
-  tags: string[];
+  epics: string[];
   assignedTo: string;
   createdAt: any;
   createdBy: {
@@ -180,8 +180,10 @@ export interface Task {
   points: number | null;
   sprintId?: string;
   sprintName?: string;
-  type: 'epic' | 'story' | 'bug' | 'subtask';
+  type: TaskType;
 }
+
+export type TaskType =  'epic' | 'feature' | 'story' | 'bug' | 'enhancemnet' | 'subtask';
 
 export interface CalendarTask extends Task {
   isSubtask?: boolean;

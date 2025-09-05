@@ -1,4 +1,4 @@
-// components/Forms/CreateTaskForm.tsx with Sprint Selection
+// components/Forms/CreateTaskForm.tsx with Task Types and Epic Selection
 import React, { useState } from "react";
 import {
   Plus,
@@ -6,13 +6,14 @@ import {
   Target,
   User,
   Calendar,
-  Tag,
   Save,
   X,
   Hash,
   Zap,
+  Layers,
+  Crown,
 } from "lucide-react";
-import { Board, Task, Sprint } from "../../store/types/types";
+import { Board, Task, Sprint, TaskType } from "../../store/types/types";
 import CustomDropdown from "../Atoms/CustomDropDown";
 import ErrorModal from "../Atoms/ErrorModal";
 
@@ -22,6 +23,8 @@ interface CreateTaskFormProps {
   onCancel: () => void;
   existingTasks: Task[];
   sprints?: Sprint[];
+  isSubtask?: boolean;
+  parentTaskId?: string;
 }
 
 const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
@@ -30,6 +33,8 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
   onCancel,
   existingTasks,
   sprints = [],
+  isSubtask = false,
+  parentTaskId,
 }) => {
   const [form, setForm] = useState({
     title: "",
@@ -37,22 +42,36 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
     priority: "Medium" as "Low" | "Medium" | "High",
     points: 3, // Default to 3 story points
     dueDate: "",
-    tags: "",
+    epics: [] as string[],
     assignedTo: "",
     taskStatus: "",
     sprintId: "",
     sprintName: "Backlog",
+    type: isSubtask ? "subtask" : "story" as "epic" | "feature" | "story" | "bug" | "enhancement" | "subtask",
   });
+
+  const [newEpic, setNewEpic] = useState("");
+  const [showEpicInput, setShowEpicInput] = useState(false);
 
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({
     title: "",
     dueDate: "",
     taskStatus: "",
-    tags: "",
+    epics: "",
     points: "",
     sprintId: "",
+    type: "",
   });
+
+  // Get existing epics from all tasks
+  const existingEpics = Array.from(
+    new Set(
+      existingTasks
+        .filter(task => task.epics && task.epics.length > 0)
+        .flatMap(task => task.epics || [])
+    )
+  ).sort();
 
   const validateField = (name: string, value: string | number) => {
     let error = "";
@@ -119,18 +138,11 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
           }
         }
         break;
-      case "tags":
-        if (typeof value === "string" && value.trim()) {
-          const tagList = value
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean);
-          if (tagList.length > 5) {
-            error = "Maximum 5 tags allowed";
-          } else if (tagList.some((tag) => tag.length > 20)) {
-            error = "Each tag must be 20 characters or less";
-          } else if (tagList.some((tag) => tag.length < 2)) {
-            error = "Each tag must be at least 2 characters";
+      case "type":
+        if (typeof value === "string") {
+          const validTypes = ["epic", "feature", "story", "bug", "enhancement", "subtask"];
+          if (!validTypes.includes(value)) {
+            error = "Invalid task type selected";
           }
         }
         break;
@@ -149,7 +161,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
 
     // Real-time validation for specific fields
     if (
-      ["title", "dueDate", "taskStatus", "tags", "points", "sprintId"].includes(
+      ["title", "dueDate", "taskStatus", "points", "sprintId", "type"].includes(
         name
       )
     ) {
@@ -164,30 +176,59 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
       validateField(field, pointsValue);
     } else {
       setForm((prev) => ({ ...prev, [field]: value }));
-      if (["taskStatus", "sprintId"].includes(field)) {
+      if (["taskStatus", "sprintId", "type"].includes(field)) {
         validateField(field, value);
       }
     }
   };
 
+  const handleAddEpic = () => {
+    const epicName = newEpic.trim();
+    if (!epicName) return;
+
+    if (form.epics.includes(epicName)) {
+      setError("This epic is already added.");
+      return;
+    }
+
+    if (form.epics.length >= 3) {
+      setError("Maximum 3 epics allowed per task.");
+      return;
+    }
+
+    setForm(prev => ({
+      ...prev,
+      epics: [...prev.epics, epicName]
+    }));
+    setNewEpic("");
+    setShowEpicInput(false);
+  };
+
+  const handleRemoveEpic = (epicToRemove: string) => {
+    setForm(prev => ({
+      ...prev,
+      epics: prev.epics.filter(epic => epic !== epicToRemove)
+    }));
+  };
+
   const validateForm = () => {
-    const { title, dueDate, taskStatus, tags, points, sprintId } = form;
+    const { title, dueDate, taskStatus, points, sprintId, type } = form;
 
     // Validate all required fields
     const titleValid = validateField("title", title);
     const dueDateValid = validateField("dueDate", dueDate);
     const statusValid = validateField("taskStatus", taskStatus);
-    const tagsValid = validateField("tags", tags);
     const pointsValid = validateField("points", points);
     const sprintValid = validateField("sprintId", sprintId);
+    const typeValid = validateField("type", type);
 
     if (
       !titleValid ||
       !dueDateValid ||
       !statusValid ||
-      !tagsValid ||
       !pointsValid ||
-      !sprintValid
+      !sprintValid ||
+      !typeValid
     ) {
       setError("Please fix all validation errors before submitting.");
       return false;
@@ -217,17 +258,11 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
       points,
       dueDate,
       taskStatus,
-      tags,
+      epics,
       assignedTo,
       sprintId,
+      type,
     } = form;
-
-    // Parse and clean tags
-    const tagList = tags
-      .split(",")
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean)
-      .filter((tag, index, array) => array.indexOf(tag) === index); // Remove duplicates
 
     const taskData: Omit<Task, "id" | "boardId"> = {
       title: title.trim(),
@@ -235,7 +270,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
       priority,
       dueDate,
       status: taskStatus,
-      tags: tagList,
+      epics: epics,
       assignedTo: assignedTo || "Unassigned",
       createdAt: new Date(),
       createdBy: {
@@ -244,14 +279,15 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
         name: "",
       },
       points,
-      sprintId: sprintId || undefined,
-      sprintName: sprintId
-        ? sprints.find((s) => s.id === sprintId)?.name
-        : undefined,
       progressLog: [],
       comments: [],
       files: [],
-      type: "story",
+      type: type as TaskType,
+      ...(sprintId && { 
+        sprintId: sprintId,
+        sprintName: sprints.find((s) => s.id === sprintId)?.name 
+      }),
+      ...(parentTaskId && { parentTaskId }),
     };
 
     onSubmit(taskData);
@@ -267,6 +303,11 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
 
   // Common story point values (Fibonacci sequence)
   const storyPointOptions = ["1", "2", "3", "5", "8", "13", "21"];
+
+  // Task type options
+  const taskTypeOptions = isSubtask 
+    ? ["subtask"]
+    : ["epic", "feature", "story", "bug", "enhancement"];
 
   // Sprint options - only show active and planning sprints
   const sprintOptions = [
@@ -293,13 +334,11 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
     return option.label;
   };
 
-  console.log("Board collaborators in CreateTaskForm:", board.collaborators); // Debug log
-
   return (
     <>
       <div className="space-y-6">
-        {/* Title and Priority Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Title, Type and Priority Row */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-1 md:col-span-2">
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               <FileText size={16} className="inline mr-2" />
@@ -324,6 +363,28 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
             <p className="text-xs text-slate-500">
               {form.title.length}/100 characters
             </p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <Layers size={16} className="inline mr-2" />
+              Type *
+            </label>
+            <div className="h-12">
+              <CustomDropdown
+                options={taskTypeOptions}
+                selected={form.type}
+                setSelected={(val) =>
+                  handleDropdownChange("type", val)
+                }
+                placeholder="Select type"
+                className="w-full h-full"
+                disabled={isSubtask}
+              />
+            </div>
+            {fieldErrors.type && (
+              <p className="text-red-600 text-xs mt-1">{fieldErrors.type}</p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -480,48 +541,102 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
           </div>
         </div>
 
-        {/* Tags Row */}
+        {/* Epics Row */}
         <div className="space-y-1">
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            <Tag size={16} className="inline mr-2" />
-            Tags (Optional)
-          </label>
-          <input
-            type="text"
-            name="tags"
-            value={form.tags}
-            onChange={handleChange}
-            placeholder="Enter tags separated by commas (max 5 tags, 20 chars each)"
-            className={`w-full border-2 rounded-xl px-4 py-3 h-12 focus:outline-none transition-colors ${
-              fieldErrors.tags
-                ? "border-red-300 bg-red-50 focus:border-red-500"
-                : "border-slate-200 focus:border-blue-500"
-            }`}
-          />
-          {fieldErrors.tags && (
-            <p className="text-red-600 text-xs mt-1">{fieldErrors.tags}</p>
-          )}
-          {form.tags && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {form.tags.split(",").map((tag, idx) => {
-                const trimmedTag = tag.trim();
-                if (!trimmedTag) return null;
-                return (
-                  <span
-                    key={idx}
-                    className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-1"
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <Crown size={16} className="inline mr-2" />
+              Epics (Optional)
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowEpicInput(!showEpicInput)}
+              className="p-2 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-600 transition-colors"
+            >
+              {showEpicInput ? <X size={16} /> : <Plus size={16} />}
+            </button>
+          </div>
+
+          {/* Selected Epics */}
+          {form.epics.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {form.epics.map((epic, idx) => (
+                <span
+                  key={idx}
+                  className="flex items-center gap-2 text-sm text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-3 py-1"
+                >
+                  {epic}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveEpic(epic)}
+                    className="hover:bg-purple-200 rounded-full p-1 transition-colors"
                   >
-                    #{trimmedTag}
-                  </span>
-                );
-              })}
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
             </div>
           )}
+
+          {/* Add Epic Input */}
+          {showEpicInput && (
+            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newEpic}
+                  onChange={(e) => setNewEpic(e.target.value)}
+                  placeholder="Enter epic name"
+                  className="flex-1 border-2 border-purple-200 rounded-lg px-3 py-2 text-sm focus:border-purple-500 focus:outline-none transition-colors"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddEpic();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddEpic}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+              
+              {/* Existing Epics for Quick Selection */}
+              {existingEpics.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-purple-600 mb-2">Quick select from existing:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {existingEpics
+                      .filter(epic => !form.epics.includes(epic))
+                      .slice(0, 5)
+                      .map((epic) => (
+                        <button
+                          key={epic}
+                          type="button"
+                          onClick={() => {
+                            if (form.epics.length < 3) {
+                              setForm(prev => ({
+                                ...prev,
+                                epics: [...prev.epics, epic]
+                              }));
+                            }
+                          }}
+                          className="text-xs px-2 py-1 bg-white border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors text-purple-600"
+                        >
+                          + {epic}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <p className="text-xs text-slate-500">
-            {form.tags
-              ? form.tags.split(",").filter((t) => t.trim()).length
-              : 0}
-            /5 tags
+            {form.epics.length}/3 epics (helps organize work into larger initiatives)
           </p>
         </div>
 
@@ -553,12 +668,13 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
               !form.title.trim() ||
               !form.dueDate ||
               !form.taskStatus ||
+              !form.type ||
               Object.values(fieldErrors).some((error) => error)
             }
             className="bg-slate-700 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             <Save size={18} />
-            Create Task
+            {isSubtask ? 'Create Subtask' : 'Create Task'}
           </button>
           <button
             onClick={onCancel}
