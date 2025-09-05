@@ -222,10 +222,15 @@ class SprintService {
       const completedTasks = tasks.filter(t => t.status === 'done' || t.status === 'Done');
       const actualVelocity = completedTasks.reduce((sum, task) => sum + (task.points || 0), 0);
       
+      // Calculate completion rate
+      const totalTasks = tasks.length;
+      const completionRate = totalTasks > 0 ? (completedTasks.length / totalTasks) * 100 : 0;
+      
       const updates = {
         status: 'completed' as const,
         actualVelocity,
-        completedAt: serverTimestamp()
+        completionRate: Math.round(completionRate * 10) / 10, // Round to 1 decimal place
+        completedAt: new Date().toISOString() // Use ISO string instead of serverTimestamp()
       };
       
       await this.updateSprint(userId, boardId, sprintId, updates);
@@ -236,25 +241,32 @@ class SprintService {
     }
   }
 
+
   // Fetch tasks for a specific sprint
-  async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promise<Task[]> {
-    try {
-      const tasksQuery = query(
-        collection(db, 'users', userId, 'boards', boardId, 'tasks'),
-        where('sprintId', '==', sprintId),
-        orderBy('createdAt', 'asc')
-      );
-      const snapshot = await getDocs(tasksQuery);
-      return snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        boardId, 
-        ...doc.data() 
-      } as Task));
-    } catch (error) {
-      console.error('Error fetching sprint tasks:', error);
-      throw error;
-    }
+async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promise<Task[]> {
+  try {
+    const tasksQuery = query(
+      collection(db, 'users', userId, 'boards', boardId, 'tasks'),
+      where('sprintId', '==', sprintId)
+    );
+    const snapshot = await getDocs(tasksQuery);
+    const tasks = snapshot.docs.map(doc => ({ 
+      id: doc.id, 
+      boardId, 
+      ...doc.data() 
+    } as Task));
+    
+    // Sort in memory instead
+    return tasks.sort((a, b) => {
+      const aDate = new Date(a.createdAt || 0).getTime();
+      const bDate = new Date(b.createdAt || 0).getTime();
+      return aDate - bDate;
+    });
+  } catch (error) {
+    console.error('Error fetching sprint tasks:', error);
+    throw error;
   }
+}
 
   // Listen to sprints in real-time
   subscribeToSprints(

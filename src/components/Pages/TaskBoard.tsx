@@ -1,4 +1,4 @@
-// components/Pages/TaskBoard.tsx
+// components/Pages/TaskBoard.tsx - Enhanced with Sprint Management
 import React, { useEffect, useState, useMemo } from "react";
 import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd";
 import {
@@ -24,6 +24,9 @@ import {
   CheckCircle,
   ChevronDown,
   ChevronUp,
+  Zap,
+  Layers,
+  Calendar1Icon,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
 import { useTasksSync } from "../../hooks/useFirebaseSync";
@@ -38,7 +41,8 @@ import {
   createTask,
   setSelectedTask,
 } from "../../store/slices/taskSlice";
-import { Task } from "../../store/types/types";
+import { fetchSprints } from "../../store/slices/sprintSlice";
+import { Task, Sprint } from "../../store/types/types";
 import TaskCard from "../Templates/TaskCard";
 import TaskModal from "./TaskModal";
 import TaskStats from "../TaskStats";
@@ -56,13 +60,14 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const { user } = useAppSelector((state) => state.auth);
   const { currentBoard, loading } = useAppSelector((state) => state.boards);
   const { selectedTask } = useAppSelector((state) => state.tasks);
-  const tasks = useTasksSync(boardId); // Real-time sync
+  const { sprints } = useAppSelector((state) => state.sprints);
+  const tasks = useTasksSync(boardId);
   const navigate = useNavigate();
 
-  // Get collaborators from currentBoard, ensuring we have the latest data
+  // Get collaborators from currentBoard
   const collaborators = currentBoard?.collaborators || [];
 
-  // Existing state variables
+  // State variables
   const [formOpen, setFormOpen] = useState(false);
   const [editingStatus, setEditingStatus] = useState<string | null>(null);
   const [newStatusName, setNewStatusName] = useState("");
@@ -84,8 +89,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedSprints, setSelectedSprints] = useState<string[]>([]);
 
-  // Get unique assignees and tags from tasks
+  // Current active sprint for board header
+  const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
+
+  // Get unique assignees, tags, and sprints from tasks
   const uniqueAssignees = useMemo(() => {
     const assignees = new Set<string>();
     tasks.forEach((task) => {
@@ -106,7 +115,22 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     return Array.from(tags);
   }, [tasks]);
 
-  // Filtered tasks based on search and filters (excluding subtasks)
+  const uniqueSprints = useMemo(() => {
+    const sprintNames = new Set<string>();
+    tasks.forEach((task) => {
+      if (task.sprintId) {
+        const sprint = sprints.find((s) => s.id === task.sprintId);
+        if (sprint) {
+          sprintNames.add(sprint.name);
+        }
+      } else {
+        sprintNames.add("Backlog");
+      }
+    });
+    return Array.from(sprintNames);
+  }, [tasks, sprints]);
+
+  // Filtered tasks based on search and filters
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       // Exclude subtasks from main board view
@@ -129,16 +153,39 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         selectedTags.length === 0 ||
         (task.tags && task.tags.some((tag) => selectedTags.includes(tag)));
 
-      return matchesSearch && matchesAssignee && matchesTags;
-    });
-  }, [tasks, searchTerm, selectedAssignees, selectedTags]);
+      // Sprint filter
+      const matchesSprint =
+        selectedSprints.length === 0 ||
+        (task.sprintId &&
+          selectedSprints.includes(
+            sprints.find((s) => s.id === task.sprintId)?.name || ""
+          )) ||
+        (!task.sprintId && selectedSprints.includes("Backlog"));
 
-  // Fetch board data on mount
+      return matchesSearch && matchesAssignee && matchesTags && matchesSprint;
+    });
+  }, [
+    tasks,
+    searchTerm,
+    selectedAssignees,
+    selectedTags,
+    selectedSprints,
+    sprints,
+  ]);
+
+  // Fetch board data and sprints on mount
   useEffect(() => {
     if (user && boardId) {
       dispatch(fetchBoard({ userId: user.uid, boardId }));
+      dispatch(fetchSprints({ userId: user.uid, boardId }));
     }
   }, [user, boardId, dispatch]);
+
+  // Set current active sprint
+  useEffect(() => {
+    const activeSprint = sprints.find((sprint) => sprint.status === "active");
+    setCurrentSprint(activeSprint || null);
+  }, [sprints]);
 
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination || !user || !currentBoard) return;
@@ -172,159 +219,59 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     );
   };
 
-  // Board Tools Component (moved to header)
-  const BoardTools = () => (
-    <div className="flex gap-2">
-      <button
-        onClick={() => navigate(`/board/${boardId}/planning`)}
-        className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-      >
-        <Target size={14} />
-        <span className="hidden sm:inline">Planning</span>
-      </button>
-      <button
-        onClick={() => navigate(`/board/${boardId}/analytics`)}
-        className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-      >
-        <BarChart3 size={14} />
-        <span className="hidden sm:inline">Analytics</span>
-      </button>
-      <button
-        onClick={() => navigate(`/board/${boardId}/retro`)}
-        className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-      >
-        <MessageSquare size={14} />
-        <span className="hidden sm:inline">Retro</span>
-      </button>
-      <button
-        onClick={() => navigate(`/board/${boardId}/reflection`)}
-        className="flex items-center gap-1 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
-      >
-        <BookOpen size={14} />
-        <span className="hidden sm:inline">Reflection</span>
-      </button>
-    </div>
-  );
+  // Enhanced Board Tools Component with Sprint Context
+  const BoardTools = () => {
+    const currentSprintNumber = currentSprint?.sprintNumber;
 
-  // Filter Dropdown Component
-  const FilterDropdown = () => (
-    <div className="relative">
-      <button
-        onClick={() => setShowFilters(!showFilters)}
-        className={`px-3 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 ${
-          showFilters || hasActiveFilters
-            ? "bg-blue-600 text-white"
-            : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-        }`}
-      >
-        <Filter size={16} />
-        <span className="hidden sm:inline">Filters</span>
-        {hasActiveFilters && (
-          <span className="bg-white text-blue-600 text-xs px-2 py-1 rounded-full font-bold">
-            {(searchTerm ? 1 : 0) +
-              selectedAssignees.length +
-              selectedTags.length}
-          </span>
+    return (
+      <div className="flex gap-2">
+        <button
+          onClick={() => navigate(`/board/${boardId}/planning`)}
+          className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+        >
+          <Target size={14} />
+          <span className="hidden sm:inline">Planning</span>
+        </button>
+        {currentSprint && (
+          <>
+            <button
+              onClick={() =>
+                navigate(
+                 `/board/${boardId}/${currentSprintNumber}/analytics/`
+                )
+              }
+              className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+            >
+              <BarChart3 size={14} />
+              <span className="hidden sm:inline">Analytics</span>
+            </button>
+            <button
+              onClick={() =>
+                navigate(
+                   `/board/${boardId}/${currentSprintNumber}/retro/`
+                )
+              }
+              className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+            >
+              <MessageSquare size={14} />
+              <span className="hidden sm:inline">Retro</span>
+            </button>
+            <button
+              onClick={() =>
+                navigate(
+                   `/board/${boardId}/${currentSprintNumber}/reflection/`
+                )
+              }
+              className="flex items-center gap-1 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
+            >
+              <BookOpen size={14} />
+              <span className="hidden sm:inline">Reflection</span>
+            </button>
+          </>
         )}
-        <ChevronDown
-          size={14}
-          className={`transition-transform ${showFilters ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {showFilters && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg border border-slate-200 shadow-lg z-50 p-4">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-slate-800">Filters</h3>
-              {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200 transition-colors"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
-
-            {/* Assignee Filter */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                <UserCheck size={16} />
-                Assigned To
-              </label>
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {uniqueAssignees.map((assignee) => (
-                  <label
-                    key={assignee}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAssignees.includes(assignee)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedAssignees([
-                            ...selectedAssignees,
-                            assignee,
-                          ]);
-                        } else {
-                          setSelectedAssignees(
-                            selectedAssignees.filter((a) => a !== assignee)
-                          );
-                        }
-                      }}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-slate-600">{assignee}</span>
-                  </label>
-                ))}
-                {uniqueAssignees.length === 0 && (
-                  <p className="text-sm text-slate-400">
-                    No assigned tasks yet
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Tags Filter */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                <Tag size={16} />
-                Tags
-              </label>
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {uniqueTags.map((tag) => (
-                  <label key={tag} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedTags.includes(tag)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedTags([...selectedTags, tag]);
-                        } else {
-                          setSelectedTags(
-                            selectedTags.filter((t) => t !== tag)
-                          );
-                        }
-                      }}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-slate-600 px-2 py-1 bg-slate-100 rounded-lg text-xs">
-                      {tag}
-                    </span>
-                  </label>
-                ))}
-                {uniqueTags.length === 0 && (
-                  <p className="text-sm text-slate-400">No tags found</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  };
 
   // Rest of the existing handlers (keeping them unchanged)
   const handleAddColumn = async () => {
@@ -585,12 +532,14 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     setSearchTerm("");
     setSelectedAssignees([]);
     setSelectedTags([]);
+    setSelectedSprints([]);
   };
 
   const hasActiveFilters =
     searchTerm !== "" ||
     selectedAssignees.length > 0 ||
-    selectedTags.length > 0;
+    selectedTags.length > 0 ||
+    selectedSprints.length > 0;
 
   if (loading || !currentBoard) {
     return (
@@ -605,7 +554,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-100 to-blue-100 overflow-hidden">
-      {/* Sidebar - Updated without Sprint section */}
+      {/* Sidebar */}
       <aside
         className={`bg-white border-r-2 border-slate-200/60 shadow-xl transition-all duration-300 ${
           sidebarCollapsed ? "w-18" : "w-72"
@@ -627,7 +576,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
         {!sidebarCollapsed && (
           <div className="p-6 overflow-y-auto h-full">
-            {/* Team Members Section - Now Collapsible */}
+
+            {/* Team Members Section */}
             <div className="mb-8">
               <div className="flex justify-between items-center mb-4">
                 <button
@@ -792,13 +742,38 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         </div>
 
         <div className="relative z-10 h-full flex flex-col">
-          {/* Header - Updated with Board Tools and Filter */}
+          {/* Header with Sprint Info */}
           <div className="flex-shrink-0 p-6 pb-4">
             <div className="flex justify-between items-center mb-6">
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-                  {currentBoard.title}
-                </h1>
+              <div className="flex items-center gap-4">
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                    {currentBoard.title}
+                  </h1>
+
+                  {currentSprint && (
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full text-sm font-medium shadow-sm">
+                        <Zap size={16} />
+                        <span>{currentSprint.name}</span>
+                      </div>
+                      {currentSprint.endDate && (
+                        <div className="flex items-center gap-1 text-sm text-slate-600">
+                          <Calendar1Icon size={14} />
+                          <span>
+                            {new Date(
+                              currentSprint.startDate
+                            ).toLocaleDateString()}{" "}
+                            -{" "}
+                            {new Date(
+                              currentSprint.endDate
+                            ).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <BoardTools />
@@ -821,8 +796,11 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
               setSelectedAssignees={setSelectedAssignees}
               selectedTags={selectedTags}
               setSelectedTags={setSelectedTags}
+              selectedSprints={selectedSprints}
+              setSelectedSprints={setSelectedSprints}
               uniqueAssignees={uniqueAssignees}
               uniqueTags={uniqueTags}
+              uniqueSprints={uniqueSprints}
               hasActiveFilters={hasActiveFilters}
               clearFilters={clearFilters}
             />
@@ -834,11 +812,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                 onSubmit={handleCreateTask}
                 onCancel={() => setFormOpen(false)}
                 existingTasks={tasks}
+                sprints={sprints}
               />
             )}
           </div>
 
-          {/* Kanban Board Container - Reduced column width */}
+          {/* Kanban Board Container */}
           <div className="flex-1 min-h-0">
             <div className="h-full overflow-auto px-6">
               <DragDropContext onDragEnd={handleDragEnd}>
@@ -1038,6 +1017,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                 onSubmit={handleCreateTask}
                 onCancel={() => setFormOpen(false)}
                 existingTasks={tasks}
+                sprints={sprints}
               />
             </div>
           </div>
@@ -1049,6 +1029,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         <TaskModal
           task={selectedTask}
           onClose={() => dispatch(setSelectedTask(null))}
+          sprints={sprints}
         />
       )}
 

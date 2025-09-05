@@ -219,7 +219,7 @@ const SprintRouter: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <Calendar size={16} className="text-slate-400" />
                     <span className="text-slate-600">
-                      {Math.max(0, Math.ceil((new Date(sprint.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))} days left
+                    {new Date(sprint.startDate).toLocaleDateString()} - {new Date(sprint.endDate).toLocaleDateString()}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -269,61 +269,6 @@ const SprintRouter: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {/* Breadcrumb */}
-      <div className="bg-slate-100 border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-3">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <span>Boards</span>
-            <span>/</span>
-            <span>{currentBoard.title}</span>
-            <span>/</span>
-            <span>Sprint {sprintNo}</span>
-            <span>/</span>
-            <span className="text-slate-800 font-medium">
-              {currentTabInfo.label}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Sprint Info Banner (if sprint exists) */}
-      {sprint && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200">
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div>
-                  <div className="flex items-center gap-3 mb-1">
-                    <h2 className="text-lg font-semibold text-slate-800">{sprint.name}</h2>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      sprint.status === 'active' ? 'bg-green-100 text-green-700' :
-                      sprint.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {sprint.status}
-                    </span>
-                  </div>
-                  <div className="text-sm text-slate-600">
-                    {new Date(sprint.startDate).toLocaleDateString()} - {new Date(sprint.endDate).toLocaleDateString()}
-                    {sprint.goals.length > 0 && (
-                      <span className="ml-4">
-                        {sprint.goals.length} {sprint.goals.length === 1 ? 'goal' : 'goals'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-blue-600">
-                  {sprint.totalStoryPoints}
-                </div>
-                <div className="text-sm text-slate-600">Story Points</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Tab Content */}
       <div className="max-w-7xl mx-auto p-6">

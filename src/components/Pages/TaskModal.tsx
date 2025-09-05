@@ -1,4 +1,4 @@
-// components/Modals/TaskModal.tsx - Enhanced version with editable title, priority, and points
+// components/Modals/TaskModal.tsx - Enhanced version with Sprint Management
 import React, { useEffect, useState } from "react";
 import {
   X,
@@ -23,6 +23,7 @@ import {
   SquarePen,
   Check,
   Hash,
+  Zap,
 } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
@@ -37,6 +38,7 @@ import {
   Comment,
   FileAttachment,
   Collaborator,
+  Sprint,
 } from "../../store/types/types";
 import ConfirmModal from "../Atoms/ConfirmModal";
 import CustomDropdown from "../Atoms/CustomDropDown";
@@ -46,9 +48,10 @@ import ErrorModal from "../Atoms/ErrorModal";
 interface TaskModalProps {
   task: Task;
   onClose: () => void;
+  sprints?: Sprint[];
 }
 
-const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
+const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) => {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const { currentBoard } = useAppSelector((state) => state.boards);
@@ -69,6 +72,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
   const [errorMessage, setErrorMessage] = useState("");
   const [confirmMessage, setConfirmMessage] = useState("");
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+
+  // Sprint state
+  const [sprintId, setSprintId] = useState(task.sprintId || "");
+  const [editingSprint, setEditingSprint] = useState(false);
 
   // Edit state for title, priority, and points
   const [editingTitle, setEditingTitle] = useState(false);
@@ -125,6 +132,20 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
   }, [user, currentBoard, task.id]);
 
   const collaborators = currentBoard?.collaborators || [];
+
+  // Get current sprint info
+  const currentSprint = sprintId ? sprints.find(s => s.id === sprintId) : null;
+  const activeSprints = sprints.filter(s => s.status === 'active' || s.status === 'planning');
+  console.log("Active sprints", {sprints, currentSprint, sprintId});
+
+  // Sprint options
+  const sprintOptions = [
+    { value: "", label: "Backlog" },
+    ...activeSprints.map(s => ({
+      value: s.id,
+      label: `${s.name}`
+    }))
+  ];
 
   const closeModal = () => {
     if (unsavedChanges) {
@@ -191,6 +212,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
     }
   };
 
+  // Handle sprint save
+  const handleSaveSprint = () => {
+    setEditingSprint(false);
+    if (sprintId !== (task.sprintId || "")) {
+      setUnsavedChanges(true);
+    }
+  };
+
   // Handle title cancel
   const handleCancelTitle = () => {
     setTitle(task.title || "");
@@ -207,6 +236,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
   const handleCancelPoints = () => {
     setPoints(task.points || 3);
     setEditingPoints(false);
+  };
+
+  // Handle sprint cancel
+  const handleCancelSprint = () => {
+    setSprintId(task.sprintId || "");
+    setEditingSprint(false);
   };
 
   const validateSubtaskForm = (
@@ -330,6 +365,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
         },
         createdAt: Timestamp.now(),
         boardId: currentBoard.id,
+        type: "subtask" as const
       };
 
       await dispatch(
@@ -715,6 +751,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
         });
       }
 
+      // Check for sprint changes
+      if (sprintId !== (task.sprintId || "")) {
+        updates.sprintId = sprintId || undefined;
+        const oldSprintName = task.sprintId 
+          ? sprints.find(s => s.id === task.sprintId)?.name || "Unknown Sprint"
+          : "Backlog";
+        const newSprintName = sprintId 
+          ? sprints.find(s => s.id === sprintId)?.name || "Unknown Sprint"
+          : "Backlog";
+        
+        newLogEntries.push({
+          type: "sprint-change" as const,
+          desc: `Task moved from ${oldSprintName} to ${newSprintName}`,
+          timestamp: Timestamp.now(),
+          user: user.displayName || user.email,
+        });
+      }
+
       // Check for description changes
       if (description.trim() !== (task.description || "").trim()) {
         updates.description = description;
@@ -952,6 +1006,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
                     {progress.completed}/{progress.total} subtasks
                   </span>
                 )}
+                {/* Sprint Info */}
+                {currentSprint && (
+                  <span className="flex items-center gap-2 px-2 py-1 bg-white/20 rounded-full">
+                    <Zap size={14} />
+                    Sprint {currentSprint.sprintNumber}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -966,7 +1027,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
                       setPriority(val as "Low" | "Medium" | "High")
                     }
                     placeholder="Priority"
-                    className="w-32"
+                    className="w-32 z-50"
                   />
                   <button
                     onClick={handleSavePriority}
@@ -1055,6 +1116,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(95vh-200px)]">
+
           {/* Description */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -1072,6 +1134,67 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
               className="w-full min-h-[100px] p-4 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-all duration-200 resize-none"
               placeholder="Edit task description..."
             />
+          </div>
+
+                    {/* Sprint Assignment */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-purple-100">
+                <Zap size={18} className="text-purple-600" />
+              </div>
+              <h3 className="font-semibold text-slate-800">Sprint Assignment</h3>
+            </div>
+            
+            {editingSprint ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <CustomDropdown
+                    options={sprintOptions.map(opt => opt.label)}
+                    selected={sprintId 
+                      ? sprintOptions.find(opt => opt.value === sprintId)?.label || ""
+                      : "Backlog"
+                    }
+                    setSelected={(label) => {
+                      const option = sprintOptions.find(opt => opt.label === label);
+                      setSprintId(option?.value || "");
+                    }}
+                    placeholder="Select sprint"
+                    className="w-full"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveSprint}
+                  className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
+                  title="Save sprint assignment"
+                >
+                  <Check size={16} />
+                </button>
+                <button
+                  onClick={handleCancelSprint}
+                  className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                  title="Cancel"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between py-2 px-4 bg-purple-50 rounded-xl border border-purple-200 group">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="font-semibold text-purple-800">
+                      {currentSprint ? currentSprint.name : "Backlog"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingSprint(true)}
+                  className="p-2 rounded-lg bg-purple-200 hover:bg-purple-300 text-purple-700 transition-colors opacity-0 group-hover:opacity-100"
+                  title="Change sprint assignment"
+                >
+                  <Edit3 size={16} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Assignment and Due Date */}
@@ -1094,7 +1217,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
                   setUnsavedChanges(true);
                 }}
                 placeholder="Assign to..."
-                className="w-full"
+                className="w-full py-4"
               />
             </div>
 
@@ -1751,7 +1874,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose }) => {
                           {log.desc}
                         </p>
                         <div className="text-xs text-slate-500 mt-1">
-                          {log.user || "System"} •{" "}
+                          {log.user || "System"} â€¢{" "}
                           {log.timestamp?.toDate?.()?.toLocaleString?.() || ""}
                         </div>
                       </div>

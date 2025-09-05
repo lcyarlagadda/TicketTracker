@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Filter, UserCheck, Tag } from "lucide-react";
+import { Search, Filter, UserCheck, Tag, Zap } from "lucide-react";
 
 interface FilterSectionProps {
   searchTerm: string;
@@ -10,8 +10,11 @@ interface FilterSectionProps {
   setSelectedAssignees: (value: string[]) => void;
   selectedTags: string[];
   setSelectedTags: (value: string[]) => void;
+  selectedSprints: string[];
+  setSelectedSprints: (value: string[]) => void;
   uniqueAssignees: string[];
   uniqueTags: string[];
+  uniqueSprints: string[];
   hasActiveFilters: boolean;
   clearFilters: () => void;
 }
@@ -25,8 +28,11 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   setSelectedAssignees,
   selectedTags,
   setSelectedTags,
+  selectedSprints,
+  setSelectedSprints,
   uniqueAssignees,
   uniqueTags,
+  uniqueSprints,
   hasActiveFilters,
   clearFilters,
 }) => {
@@ -58,7 +64,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
             Filters
             {hasActiveFilters && (
               <span className="bg-white text-blue-600 text-xs px-2 py-1 rounded-full font-bold">
-                {(searchTerm ? 1 : 0) + selectedAssignees.length + selectedTags.length}
+                {(searchTerm ? 1 : 0) + selectedAssignees.length + selectedTags.length + selectedSprints.length}
               </span>
             )}
           </button>
@@ -74,7 +80,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
 
         {/* Filter Controls */}
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-200">
             {/* Assignee Filter */}
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
@@ -133,6 +139,38 @@ const FilterSection: React.FC<FilterSectionProps> = ({
                 ))}
                 {uniqueTags.length === 0 && (
                   <p className="text-sm text-slate-400">No tags found</p>
+                )}
+              </div>
+            </div>
+
+            {/* Sprint Filter */}
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                <Zap size={16} />
+                Sprint
+              </label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {uniqueSprints.map(sprint => (
+                  <label key={sprint} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedSprints.includes(sprint)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSprints([...selectedSprints, sprint]);
+                        } else {
+                          setSelectedSprints(selectedSprints.filter(s => s !== sprint));
+                        }
+                      }}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className={`text-slate-600 px-2 py-1 rounded-lg text-xs`}>
+                      {sprint === 'Backlog' ? 'Backlog' : `${sprint}`}
+                    </span>
+                  </label>
+                ))}
+                {uniqueSprints.length === 0 && (
+                  <p className="text-sm text-slate-400">No sprints found</p>
                 )}
               </div>
             </div>
