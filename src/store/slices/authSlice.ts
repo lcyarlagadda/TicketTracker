@@ -20,7 +20,7 @@ import { User, AuthState } from '../types/types';
 
 const initialState: AuthState = {
   user: null,
-  loading: false,
+  loading: true, // Start with loading true to prevent premature redirects
   error: null,
 };
 

@@ -1,4 +1,4 @@
-// components/TaskStats.tsx - Updated to exclude child tasks
+// components/TaskStats.tsx
 import React from 'react';
 import { useAppSelector } from '../hooks/redux';
 import { Task } from '../store/types/types';
@@ -18,7 +18,7 @@ const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
 
   // Calculate different task categories (for main tasks only)
   const priorityTasks = mainTasks.filter(t =>
-    t.priority === 'High' && t.status !== 'done' && t.status !== 'completed' && t.assignedTo === user?.uid
+    t.priority === 'High' && t.status !== 'done' && t.status !== 'completed' && t.assignedTo?.email === user?.email
   ).length;
 
   const overdueTasks = mainTasks.filter(t =>
@@ -26,26 +26,27 @@ const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
     new Date(t.dueDate) < today &&
     t.status !== 'done' &&
     t.status !== 'completed' &&
-   t.assignedTo === user?.uid
+   t.assignedTo?.email === user?.email
   ).length;
 
   const upcomingTasks = mainTasks.filter(t => {
-    if (!t.dueDate || t.status === 'done' || t.status === 'completed' || t.assignedTo !== user?.uid) return false;
+    if (!t.dueDate || t.status === 'done' || t.status === 'completed' || t.assignedTo?.email !== user?.email) return false;
     const taskDate = new Date(t.dueDate);
     const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
     return taskDate >= new Date() && taskDate <= nextWeek;
   }).length;
 
   const pendingTasks = mainTasks.filter(t =>
-    t.status !== 'done' && t.status !== 'completed' && t.assignedTo === user?.uid
+    t.status !== 'done' && t.status !== 'completed' && t.assignedTo?.email === user?.email
   ).length;
 
   const completedTasks = mainTasks.filter(t =>
-    t.status === 'done' || t.status === 'completed' && t.assignedTo === user?.uid
+    (t.status === 'done' || t.status === 'completed') && t.assignedTo?.email === user?.email
   ).length;
 
   return (
     <div className="w-56">
+      
       <div className="space-y-3">
 
         {/* Priority Tasks */}

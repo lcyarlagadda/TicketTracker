@@ -615,9 +615,9 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
       completedPoints,
       completionRate: totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) : '0',
       velocity: completedPoints,
-      teamSize: board.collaborators.length
+      teamSize: (sprint?.status === 'active' || sprint?.status === 'planning') ? board.collaborators.length : (sprint?.teamSize || board.collaborators.length)
     };
-  }, [tasks, board.collaborators]);
+  }, [tasks, board.collaborators, sprint]);
 
   // Auto-save retro data
   const saveRetroData = async (): Promise<void> => {

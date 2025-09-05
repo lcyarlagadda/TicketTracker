@@ -21,6 +21,10 @@ class AuthService {
         : null;
       
       store.dispatch(setUser(user));
+    }, (error) => {
+      console.error('Auth state change error:', error);
+      // Set user to null and loading to false on error
+      store.dispatch(setUser(null));
     });
   }
 

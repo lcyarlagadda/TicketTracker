@@ -193,7 +193,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleCopyTaskId}
-                    className="flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono text-slate-600 transition-colors"
+                    className="flex items-center gap-1 px-2 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono text-slate-600 transition-colors"
                     title="Copy Task ID"
                   >
                     {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -293,12 +293,16 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
 
               <div className="flex items-center gap-2 mb-3 p-2 bg-slate-50 rounded-lg">
                 <UserCircle size={16} className="text-slate-500" />
-                <div>
-                  <p className="text-xs text-slate-500">Assigned to</p>
-                  <p className="text-sm text-slate-700 font-medium">
-                    {task.assignedTo || 'Unassigned'}
-                  </p>
-                </div>
+                {task.assignedTo ? (
+                  <div>
+                    <p className="text-xs text-slate-500">Assigned to</p>
+                    <p className="text-sm text-slate-700 font-medium">
+                      {task.assignedTo.name}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 font-medium">Unassigned</p>
+                )}
               </div>
 
               <div className="flex justify-between items-center mb-3">
@@ -327,7 +331,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                       key={idx}
                       className="text-xs text-purple-600 bg-purple-100 rounded-full px-2 py-1 border border-purple-200"
                     >
-                      {epic}
+                      #{epic}
                     </span>
                   ))}
                   {task.epics.length > 2 && (

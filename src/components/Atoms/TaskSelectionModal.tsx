@@ -107,7 +107,7 @@ const TaskSelectionModal: React.FC<TaskSelectionModalProps> = ({
                       <div className="flex items-center gap-3 text-sm text-slate-600">
                         <span>{task.points || 0} points</span>
                         <span>•</span>
-                        <span>{task.assignedTo || 'Unassigned'}</span>
+                        <span>{task.assignedTo ? task.assignedTo.name : 'Unassigned'}</span>
                         {(task.status === 'Done' || task.status === 'done') && (
                           <CheckCircle size={14} className="text-green-600" />
                         )}

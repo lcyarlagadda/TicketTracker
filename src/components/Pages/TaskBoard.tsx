@@ -27,6 +27,7 @@ import {
   Zap,
   Layers,
   Calendar1Icon,
+  AlertCircle,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
 import { useTasksSync } from "../../hooks/useFirebaseSync";
@@ -47,6 +48,7 @@ import TaskCard from "../Templates/TaskCard";
 import TaskModal from "./TaskModal";
 import TaskStats from "../TaskStats";
 import CreateTaskForm from "../Forms/CreateTaskForm";
+import ConfirmModal from "../Atoms/ConfirmModal";
 import ErrorModal from "../Atoms/ErrorModal";
 import { useNavigate } from "react-router-dom";
 import FilterSection from "../Atoms/Filter";
@@ -79,9 +81,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const [newCollaboratorName, setNewCollaboratorName] = useState("");
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
-    null
-  );
+  const [collaboratorToDelete, setCollaboratorToDelete] = useState<string | null>(null);
+  const [columnToDelete, setColumnToDelete] = useState<string | null>(null);
   const [moveToColumn, setMoveToColumn] = useState<string>("");
 
   // Search and Filter states
@@ -94,12 +95,17 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   // Current active sprint for board header
   const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
 
+  // Debug: Log when columnToDelete changes
+  useEffect(() => {
+    console.log('columnToDelete changed to:', columnToDelete);
+  }, [columnToDelete]);
+
   // Get unique assignees, epics, and sprints from tasks
   const uniqueAssignees = useMemo(() => {
     const assignees = new Set<string>();
     tasks.forEach((task) => {
       if (task.assignedTo) {
-        assignees.add(task.assignedTo);
+        assignees.add(task.assignedTo.name);
       }
     });
     return Array.from(assignees);
@@ -149,7 +155,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       // Assignee filter
       const matchesAssignee =
         selectedAssignees.length === 0 ||
-        (task.assignedTo && selectedAssignees.includes(task.assignedTo));
+        (task.assignedTo && selectedAssignees.includes(task.assignedTo.name));
 
       // Epic filter
       const matchesEpic =
@@ -331,57 +337,63 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   };
 
   const handleDeleteColumn = async (statusToDelete: string) => {
+    console.log('handleDeleteColumn called with:', statusToDelete);
     if (!user || !currentBoard) return;
 
     const tasksInColumn = tasks.filter(
       (task) => task.status === statusToDelete
     );
 
-    if (tasksInColumn.length > 0) {
-      setShowDeleteConfirm(statusToDelete);
-      setMoveToColumn(
-        currentBoard.statuses.find((s) => s !== statusToDelete) || ""
-      );
-      return;
-    }
+    console.log('Tasks in column:', tasksInColumn.length);
 
-    await deleteColumnDirectly(statusToDelete);
+    // Always show confirmation dialog for column deletion
+    console.log('Setting columnToDelete to:', statusToDelete);
+    setColumnToDelete(statusToDelete);
+    setMoveToColumn(
+      currentBoard.statuses.find((s) => s !== statusToDelete) || ""
+    );
   };
 
   const confirmDeleteColumn = async () => {
-    if (!showDeleteConfirm || !user || !currentBoard || !moveToColumn) return;
+    if (!columnToDelete || !user || !currentBoard) return;
 
     const tasksInColumn = tasks.filter(
-      (task) => task.status === showDeleteConfirm
+      (task) => task.status === columnToDelete
     );
 
-    try {
-      for (const task of tasksInColumn) {
-        const updatedProgressLog = [
-          ...(task.progressLog || []),
-          {
-            type: "status-change" as const,
-            desc: `Task moved from deleted column "${showDeleteConfirm}" to "${moveToColumn}"`,
-            timestamp: new Date(),
-            user: user.displayName || user.email,
-          },
-        ];
+    // For columns with tasks, we need a moveToColumn
+    if (tasksInColumn.length > 0 && !moveToColumn) return;
 
-        await dispatch(
-          updateTask({
-            userId: user.uid,
-            boardId,
-            taskId: task.id,
-            updates: {
-              status: moveToColumn,
-              progressLog: updatedProgressLog,
+    try {
+      // Move tasks to the selected column (if there are any tasks)
+      if (tasksInColumn.length > 0) {
+        for (const task of tasksInColumn) {
+          const updatedProgressLog = [
+            ...(task.progressLog || []),
+            {
+              type: "status-change" as const,
+              desc: `Task moved from deleted column "${columnToDelete}" to "${moveToColumn}"`,
+              timestamp: new Date(),
+              user: user.displayName || user.email,
             },
-          })
-        );
+          ];
+
+          await dispatch(
+            updateTask({
+              userId: user.uid,
+              boardId,
+              taskId: task.id,
+              updates: {
+                status: moveToColumn,
+                progressLog: updatedProgressLog,
+              },
+            })
+          );
+        }
       }
 
-      await deleteColumnDirectly(showDeleteConfirm);
-      setShowDeleteConfirm(null);
+      await deleteColumnDirectly(columnToDelete);
+      setColumnToDelete(null);
       setMoveToColumn("");
     } catch (error) {
       setError("Failed to delete column and move tasks.");
@@ -432,12 +444,16 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     }
   };
 
-  const handleRemoveCollaborator = async (email: string) => {
-    if (!user || !currentBoard) return;
+  const handleRemoveCollaborator = (email: string) => {
+    setCollaboratorToDelete(email);
+  };
+
+  const confirmRemoveCollaborator = async () => {
+    if (!user || !currentBoard || !collaboratorToDelete) return;
 
     try {
       const updatedCollaborators = currentBoard.collaborators.filter(
-        (c) => c.email !== email
+        (c) => c.email !== collaboratorToDelete
       );
 
       await dispatch(
@@ -449,8 +465,10 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       ).unwrap();
 
       dispatch(updateCurrentBoardCollaborators(updatedCollaborators));
+      setCollaboratorToDelete(null);
     } catch (error) {
       setError("Failed to remove collaborator.");
+      setCollaboratorToDelete(null);
     }
   };
 
@@ -1037,56 +1055,68 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       )}
 
       {/* Delete Column Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      {columnToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
-            <div className="mb-6">
-              <h3 className="text-xl font-bold text-slate-800 mb-2">
-                Delete Column
-              </h3>
-              <p className="text-slate-600">
-                The column "
-                <span className="font-semibold">{showDeleteConfirm}</span>"
-                contains{" "}
-                {tasks.filter((t) => t.status === showDeleteConfirm).length}{" "}
-                task(s). Where would you like to move them?
-              </p>
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertCircle size={24} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Delete Column</h3>
+                <p className="text-slate-600 text-sm">This action cannot be undone</p>
+              </div>
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Move tasks to:
-              </label>
-              <select
-                value={moveToColumn}
-                onChange={(e) => setMoveToColumn(e.target.value)}
-                className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-              >
-                <option value="">Select a column...</option>
-                {currentBoard?.statuses
-                  .filter((s) => s !== showDeleteConfirm)
-                  .map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-              </select>
+              {tasks.filter((t) => t.status === columnToDelete).length > 0 ? (
+                <>
+                  <p className="text-slate-700 mb-4 leading-relaxed">
+                    The column "<span className="font-semibold">{columnToDelete}</span>" contains{" "}
+                    {tasks.filter((t) => t.status === columnToDelete).length}{" "}
+                    task(s). Where would you like to move them?
+                  </p>
+                  
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Move tasks to:
+                  </label>
+                  <select
+                    value={moveToColumn}
+                    onChange={(e) => setMoveToColumn(e.target.value)}
+                    className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">Select a column...</option>
+                    {currentBoard?.statuses
+                      .filter((s) => s !== columnToDelete)
+                      .map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                  </select>
+                </>
+              ) : (
+                <p className="text-slate-700 mb-4 leading-relaxed">
+                  Are you sure you want to delete the column "<span className="font-semibold">{columnToDelete}</span>"? 
+                  This action cannot be undone.
+                </p>
+              )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-end">
               <button
                 onClick={() => {
-                  setShowDeleteConfirm(null);
+                  setColumnToDelete(null);
                   setMoveToColumn("");
                 }}
-                className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-300 transition-colors"
+                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all duration-200"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDeleteColumn}
-                disabled={!moveToColumn}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed transition-colors"
+                disabled={tasks.filter((t) => t.status === columnToDelete).length > 0 && !moveToColumn}
+                className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-medium hover:from-red-600 hover:to-red-700 transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 Delete Column
               </button>
@@ -1096,6 +1126,17 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       )}
 
       <ErrorModal message={error} onClose={() => setError("")} />
+      
+      {/* Confirm Remove Collaborator Modal */}
+      {collaboratorToDelete && (
+        <ConfirmModal
+          message={`Are you sure you want to remove this team member? They will lose access to this board and all its tasks.`}
+          onConfirm={confirmRemoveCollaborator}
+          onClose={() => setCollaboratorToDelete(null)}
+          confirmText="Remove"
+          cancelText="Cancel"
+        />
+      )}
     </div>
   );
 };

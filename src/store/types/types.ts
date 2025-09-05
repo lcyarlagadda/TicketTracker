@@ -166,7 +166,11 @@ export interface Task {
   dueDate: string;
   status: string;
   epics: string[];
-  assignedTo: string;
+  assignedTo: {
+    uid: string;
+    email: string;
+    name: string;
+  } | null;
   createdAt: any;
   createdBy: {
     uid: string;

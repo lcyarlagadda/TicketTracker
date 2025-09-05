@@ -1,10 +1,11 @@
 // components/Analytics/SprintPlanningWithModal.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Target, Plus, ArrowLeft, Play, Square, CheckCircle, BarChart3, MessageSquare, BookOpen, AlertTriangle, X, Save, Edit3, EyeIcon } from 'lucide-react';
-import { useAppSelector } from '../../../hooks/redux';
+import { useAppSelector, useAppDispatch } from '../../../hooks/redux';
 import { useTasksSync } from '../../../hooks/useFirebaseSync';
 import { Sprint } from '../../../store/types/types';
 import { sprintService } from '../../../services/sprintService';
+import { fetchBoard } from '../../../store/slices/boardSlice';
 import { useNavigate } from 'react-router-dom';
 import SprintModal from '../../Forms/CreateSprintForm';
 
@@ -14,6 +15,8 @@ interface SprintPlanningProps {
 
 const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => {
   const { user } = useAppSelector(state => state.auth);
+  const { currentBoard } = useAppSelector(state => state.boards);
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const tasks = useTasksSync(boardId);
   
@@ -22,11 +25,22 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
 
-  // Calculate team size
+  // Calculate team size based on board collaborators (for new sprints)
   const teamSize = useMemo(() => {
-    const assignees = new Set(tasks.map(t => t.assignedTo).filter(Boolean));
+    if (currentBoard && currentBoard.collaborators) {
+      return Math.max(currentBoard.collaborators.length, 1);
+    }
+    // Fallback to task assignees if board data not available
+    const assignees = new Set(tasks.map(t => t.assignedTo?.name).filter(Boolean));
     return Math.max(assignees.size, 1);
-  }, [tasks]);
+  }, [currentBoard, tasks]);
+
+  // Fetch board data if not already loaded
+  useEffect(() => {
+    if (user && boardId && (!currentBoard || currentBoard.id !== boardId)) {
+      dispatch(fetchBoard({ userId: user.uid, boardId }));
+    }
+  }, [user, boardId, currentBoard, dispatch]);
 
   // Fetch sprints
   useEffect(() => {
@@ -344,7 +358,11 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                     <span className="font-medium">Duration:</span> {sprint.duration} days
                   </div>
                   <div>
-                    <span className="font-medium">Team:</span> {sprint.teamSize} members
+                    <span className="font-medium">Team:</span> {
+                      sprint.status === 'active' || sprint.status === 'planning'
+                        ? (currentBoard?.collaborators?.length || sprint.teamSize)
+                        : sprint.teamSize
+                    } members
                   </div>
                   <div>
                     <span className="font-medium">Capacity:</span> {(sprint as any).teamCapacityPerWeek || 'N/A'}/wk

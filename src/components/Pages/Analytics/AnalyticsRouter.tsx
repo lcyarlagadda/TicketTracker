@@ -224,7 +224,12 @@ const SprintRouter: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Users size={16} className="text-slate-400" />
-                    <span className="text-slate-600">{sprint.teamSize} team members</span>
+                    <span className="text-slate-600">
+                      {sprint.status === 'active' || sprint.status === 'planning'
+                        ? (currentBoard?.collaborators?.length || sprint.teamSize)
+                        : sprint.teamSize
+                      } team members
+                    </span>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                     sprint.status === 'active' ? 'bg-green-100 text-green-700' :

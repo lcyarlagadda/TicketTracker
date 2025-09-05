@@ -271,7 +271,13 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
       dueDate,
       status: taskStatus,
       epics: epics,
-      assignedTo: assignedTo || "Unassigned",
+      assignedTo: assignedTo && assignedTo !== "Unassigned" 
+        ? {
+            uid: board.collaborators.find(c => c.name === assignedTo)?.email || "",
+            email: board.collaborators.find(c => c.name === assignedTo)?.email || "",
+            name: assignedTo
+          }
+        : null,
       createdAt: new Date(),
       createdBy: {
         uid: "",

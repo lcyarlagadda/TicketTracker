@@ -67,7 +67,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
   const [points, setPoints] = useState(task.points || 3);
   const [taskType, setTaskType] = useState(task.type || "story");
   const [description, setDescription] = useState(task.description || "");
-  const [assignedTo, setAssignedTo] = useState(task.assignedTo || "");
+  const [assignedTo, setAssignedTo] = useState(task.assignedTo?.name || "");
   const [dueDate, setDueDate] = useState(task.dueDate || "");
   const [epics, setEpics] = useState<string[]>(task.epics || []);
   const [newEpic, setNewEpic] = useState("");
@@ -125,7 +125,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       points !== (task.points || 3) ||
       taskType !== (task.type || "story") ||
       description !== (task.description || "") ||
-      assignedTo !== (task.assignedTo || "") ||
+      assignedTo !== (task.assignedTo?.name || "") ||
       dueDate !== (task.dueDate || "") ||
       sprintId !== (task.sprintId || "") ||
       JSON.stringify(epics.sort()) !== JSON.stringify((task.epics || []).sort()) ||
@@ -319,7 +319,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         priority: newChildTask.priority,
         dueDate: newChildTask.dueDate,
         status: "todo",
-        assignedTo: newChildTask.assignedTo,
+        assignedTo: newChildTask.assignedTo && newChildTask.assignedTo !== "Unassigned" 
+          ? {
+              uid: collaborators.find(c => c.name === newChildTask.assignedTo)?.email || "",
+              email: collaborators.find(c => c.name === newChildTask.assignedTo)?.email || "",
+              name: newChildTask.assignedTo
+            }
+          : null,
         parentTaskId: task.id,
         epics: [],
         comments: [],
@@ -406,7 +412,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     setEditChildTaskData({
       title: childTask.title,
       description: childTask.description || "",
-      assignedTo: childTask.assignedTo || "",
+      assignedTo: childTask.assignedTo?.name || "",
       dueDate: childTask.dueDate || "",
       priority: childTask.priority || "Medium",
     });
@@ -429,7 +435,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
           updates: {
             title: editChildTaskData.title.trim(),
             description: editChildTaskData.description.trim(),
-            assignedTo: editChildTaskData.assignedTo,
+            assignedTo: editChildTaskData.assignedTo && editChildTaskData.assignedTo !== "Unassigned" 
+              ? {
+                  uid: collaborators.find(c => c.name === editChildTaskData.assignedTo)?.email || "",
+                  email: collaborators.find(c => c.name === editChildTaskData.assignedTo)?.email || "",
+                  name: editChildTaskData.assignedTo
+                }
+              : null,
             dueDate: editChildTaskData.dueDate,
             priority: editChildTaskData.priority,
           },
@@ -541,11 +553,21 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         });
       }
 
-      if (assignedTo !== (task.assignedTo || "")) {
-        updates.assignedTo = assignedTo;
+      if (assignedTo !== (task.assignedTo?.name || "")) {
+        // Find the collaborator object for the selected assignee
+        const selectedCollaborator = assignedTo && assignedTo !== "Unassigned" 
+          ? collaborators.find(c => c.name === assignedTo)
+          : null;
+        
+        updates.assignedTo = selectedCollaborator ? {
+          uid: selectedCollaborator.email, // Using email as uid for now
+          email: selectedCollaborator.email,
+          name: selectedCollaborator.name
+        } : null;
+        
         newLogEntries.push({
           type: "assignment-change" as const,
-          desc: `Reassigned from ${task.assignedTo || "Unassigned"} to ${
+          desc: `Reassigned from ${task.assignedTo?.name || "Unassigned"} to ${
             assignedTo || "Unassigned"
           }`,
           timestamp: Timestamp.now(),
@@ -1302,7 +1324,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                           )}
                           <div className="flex items-center gap-4 text-xs text-slate-500">
                             <span>
-                              {childTask.assignedTo || "Unassigned"}
+                              {childTask.assignedTo ? childTask.assignedTo.name : "Unassigned"}
                             </span>
                             {childTask.dueDate && (
                               <span>
