@@ -17,14 +17,17 @@ import {
   Send,
   Hash,
   AtSign,
+  Shield,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../hooks/redux";
+import { notificationService } from "../../../services/notificationService";
 import { updateBoard } from "../../../store/slices/boardSlice";
 import {
   Task,
   Board,
   Sprint,
   SprintReflectionData,
+  PrivateReflectionData,
   NewReflectionForm,
   TabKey,
   TabConfig,
@@ -35,6 +38,7 @@ import {
 } from "../../../store/types/types";
 import { useParams } from "react-router-dom";
 import { sprintService } from "../../../services/sprintService";
+import { privateReflectionService } from "../../../services/privateReflectionService";
 import { SmartCommentInput } from "../../Atoms/TaskSelectionModal";
 import TaskModal from "../TaskModal";
 
@@ -316,17 +320,24 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   const { sprintNo } = useParams();
 
   const [sprint, setSprint] = useState<Sprint | null>(null);
-  const [reflectionData, setReflectionData] = useState<SprintReflectionData>({
+  const [reflectionData, setReflectionData] = useState<PrivateReflectionData>({
     sprintId: "",
     sprintNumber: 0,
+    userId: "",
+    userEmail: "",
+    userName: "",
     personalGrowth: [],
     teamInsights: [],
     lessonsLearned: [],
     futureGoals: [],
+    managerFeedback: [],
     lastUpdated: "",
+    isPrivate: true,
   });
+  const [userRole, setUserRole] = useState<'admin' | 'manager' | 'user'>('user');
 
   const [activeTab, setActiveTab] = useState<TabKey>("personal");
+  const [showManagerFeedback, setShowManagerFeedback] = useState(false);
   const [newReflection, setNewReflection] = useState<NewReflectionForm>({
     content: "",
     category: "",
@@ -368,12 +379,29 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     }));
   }, [board.collaborators]);
 
-  // Fetch sprint data
+  // Helper function to extract mentions from text
+  const extractMentions = (text: string): MentionUser[] => {
+    const mentionMatches = text.match(/@(\w+)/g);
+    if (!mentionMatches) return [];
+    
+    return mentionMatches
+      .map(match => match.slice(1)) // Remove @ symbol
+      .map(username => mentionUsers.find(user => user.name === username))
+      .filter((user): user is MentionUser => user !== undefined);
+  };
+
+  // Fetch sprint data and user role
   useEffect(() => {
     const fetchSprintData = async () => {
       if (!user || !board.id || !sprintNo) return;
 
       try {
+        // Get user's role in the board
+        const userCollaborator = board.collaborators.find(c => c.email === user.email);
+        if (userCollaborator) {
+          setUserRole(userCollaborator.role);
+        }
+
         const sprints = await sprintService.fetchBoardSprints(
           user.uid,
           board.id
@@ -381,25 +409,34 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         const targetSprint = sprints.find(
           (s) => s.sprintNumber === parseInt(sprintNo)
         );
+        
         if (targetSprint) {
           setSprint(targetSprint);
 
-          const sprintReflectionKey = `sprintReflection_${targetSprint.id}`;
-          const sprintReflectionData = board[sprintReflectionKey] as
-            | SprintReflectionData
-            | undefined;
+          // Fetch private reflection data
+          const privateReflection = await privateReflectionService.getPrivateReflection(
+            user.uid,
+            board.id,
+            targetSprint.id
+          );
 
-          if (sprintReflectionData) {
-            setReflectionData(sprintReflectionData);
+          if (privateReflection) {
+            setReflectionData(privateReflection);
           } else {
+            // Initialize new private reflection
             setReflectionData({
               sprintId: targetSprint.id,
               sprintNumber: targetSprint.sprintNumber,
+              userId: user.uid,
+              userEmail: user.email || "",
+              userName: user.displayName || user.email || "Current User",
               personalGrowth: [],
               teamInsights: [],
               lessonsLearned: [],
               futureGoals: [],
+              managerFeedback: [],
               lastUpdated: "",
+              isPrivate: true,
             });
           }
         }
@@ -417,39 +454,15 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
 
     setSaveStatus("saving");
     try {
-      const sprintReflectionKey = `sprintReflection_${sprint.id}`;
-      const updatedReflectionData = {
-        ...reflectionData,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const cleanObject = (obj: any): any => {
-        if (obj === null || typeof obj !== "object") return obj;
-        if (Array.isArray(obj)) return obj.map(cleanObject);
-
-        const cleaned: any = {};
-        Object.keys(obj).forEach((key) => {
-          const value = obj[key];
-          if (value !== undefined) {
-            cleaned[key] = cleanObject(value);
-          }
-        });
-        return cleaned;
-      };
-
-      const updates: any = {
-        [sprintReflectionKey]: updatedReflectionData,
-      };
-
-      const cleanedUpdates = cleanObject(updates);
-
-      await dispatch(
-        updateBoard({
-          userId: user.uid,
-          boardId: board.id,
-          updates: cleanedUpdates,
-        })
-      ).unwrap();
+      await privateReflectionService.savePrivateReflection(
+        user.uid,
+        user.email || "",
+        user.displayName || user.email || "Current User",
+        board.id,
+        sprint.id,
+        sprint.sprintNumber,
+        reflectionData
+      );
 
       setSaveStatus("saved");
     } catch (error) {
@@ -496,7 +509,9 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         ? "teamInsights"
         : activeTab === "lessons"
         ? "lessonsLearned"
-        : "futureGoals";
+        : activeTab === "goals"
+        ? "futureGoals"
+        : "managerFeedback";
 
     setReflectionData({
       ...reflectionData,
@@ -511,6 +526,24 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       rating: 3,
     });
     setShowAddForm(false);
+
+    // Send notifications for mentions in background
+    const mentionedUsers = extractMentions(newReflection.content.trim());
+    if (mentionedUsers.length > 0) {
+      const boardUrl = `${window.location.origin}/board/${board.id}`;
+      mentionedUsers.forEach((mentionedUser) => {
+        notificationService.notifyMentioned({
+          mentionedEmail: mentionedUser.email,
+          mentionedName: mentionedUser.name,
+          mentionedBy: user.displayName || user.email || 'Unknown User',
+          boardName: board.name,
+          context: 'reflection',
+          message: `${user.displayName || user.email} mentioned you in a reflection: "${newReflection.content.trim()}"`,
+          boardUrl,
+        });
+      });
+      console.log(`Reflection mention notifications queued for ${mentionedUsers.length} user(s)`);
+    }
   };
 
   const handleDeleteReflection = (
@@ -589,6 +622,24 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     });
 
     setCommentTexts({ ...commentTexts, [itemId]: "" });
+
+    // Send notifications for mentions in comments in background
+    const mentionedUsers = extractMentions(commentText);
+    if (mentionedUsers.length > 0) {
+      const boardUrl = `${window.location.origin}/board/${board.id}`;
+      mentionedUsers.forEach((mentionedUser) => {
+        notificationService.notifyMentioned({
+          mentionedEmail: mentionedUser.email,
+          mentionedName: mentionedUser.name,
+          mentionedBy: user.displayName || user.email || 'Unknown User',
+          boardName: board.name,
+          context: 'reflection',
+          message: `${user.displayName || user.email} mentioned you in a reflection comment: "${commentText}"`,
+          boardUrl,
+        });
+      });
+      console.log(`Reflection comment mention notifications queued for ${mentionedUsers.length} user(s)`);
+    }
   };
 
   const handleLikeComment = (
@@ -698,10 +749,18 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       key: "goals",
       label: "Future Goals",
       icon: Target,
-      color: "purple",
+      color: "orange",
       description:
         "Objectives, aspirations, and plans for upcoming sprints and beyond",
     },
+    ...(userRole === 'manager' || userRole === 'admin' ? [{
+      key: "feedback" as TabKey,
+      label: "Manager Feedback",
+      icon: Crown,
+      color: "purple",
+      description:
+        "Manager feedback and guidance for team member development",
+    }] : []),
   ];
 
   const getCurrentCategoryData = (): EnhancedReflectionItem[] => {
@@ -715,6 +774,8 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           return reflectionData.lessonsLearned || [];
         case "goals":
           return reflectionData.futureGoals || [];
+        case "feedback":
+          return reflectionData.managerFeedback || [];
         default:
           return [];
       }
@@ -751,8 +812,8 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           return "bg-green-600 text-white shadow-lg";
         case "yellow":
           return "bg-yellow-600 text-white shadow-lg";
-        case "purple":
-          return "bg-purple-600 text-white shadow-lg";
+        case "orange":
+          return "bg-orange-600 text-white shadow-lg";
         default:
           return "bg-blue-600 text-white shadow-lg";
       }
@@ -842,23 +903,25 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
               team insights, and future planning
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <div
-              className={`w-2 h-2 rounded-full ${
-                saveStatus === "saving"
-                  ? "bg-yellow-500 animate-pulse"
-                  : saveStatus === "saved"
-                  ? "bg-green-500"
-                  : "bg-red-500"
-              }`}
-            ></div>
-            <span className="text-slate-600">
-              {saveStatus === "saving"
-                ? "Saving..."
-                : saveStatus === "saved"
-                ? "Saved"
-                : "Error saving"}
-            </span>
+        </div>
+
+        {/* Privacy Notice */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-blue-800 mb-1">
+                Private Reflection
+              </h3>
+              <p className="text-sm text-blue-700">
+                {userRole === 'manager' || userRole === 'admin' 
+                  ? "As a manager, you can view and provide feedback on team member reflections. Your feedback is private between you and the team member."
+                  : "Your reflections are private and only visible to you and your manager. This is a safe space for honest self-reflection and growth."
+                }
+              </p>
+            </div>
           </div>
         </div>
 
@@ -888,26 +951,6 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
             <div className="text-sm text-yellow-700">
               Avg Rating: {summaryStats.avgRating}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Mention Helper */}
-      <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200 p-4">
-        <div className="flex items-center gap-6 text-sm">
-          <div className="flex items-center gap-2">
-            <AtSign size={16} className="text-blue-600" />
-            <span className="text-slate-700">
-              Type <code className="bg-white px-1 rounded">@username</code> to
-              mention team members
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Hash size={16} className="text-green-600" />
-            <span className="text-slate-700">
-              Type <code className="bg-white px-1 rounded">#task</code> to
-              reference tasks (clickable)
-            </span>
           </div>
         </div>
       </div>
@@ -988,7 +1031,9 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                     className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   >
                     <option value="self">Self Review</option>
-                    <option value="manager">Manager Review</option>
+                    {(userRole === 'manager' || userRole === 'admin') && (
+                      <option value="manager">Manager Review</option>
+                    )}
                   </select>
                 </div>
                 <div>
@@ -1353,6 +1398,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
             setSelectedTask(null);
             setShowTaskModal(false);
           }}
+          existingTasks={tasks}
         />
       )}
     </div>

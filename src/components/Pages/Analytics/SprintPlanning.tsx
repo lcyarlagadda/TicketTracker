@@ -1,12 +1,14 @@
 // components/Analytics/SprintPlanningWithModal.tsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { Target, Plus, ArrowLeft, Play, Square, CheckCircle, BarChart3, MessageSquare, BookOpen, AlertTriangle, X, Save, Edit3 } from 'lucide-react';
-import { useAppSelector } from '../../../hooks/redux';
+import { Target, Plus, ArrowLeft, Play, Square, CheckCircle, BarChart3, MessageSquare, BookOpen, AlertTriangle, X, Save, Edit3, EyeIcon, RefreshCw } from 'lucide-react';
+import { useAppSelector, useAppDispatch } from '../../../hooks/redux';
 import { useTasksSync } from '../../../hooks/useFirebaseSync';
 import { Sprint } from '../../../store/types/types';
 import { sprintService } from '../../../services/sprintService';
+import { fetchBoard } from '../../../store/slices/boardSlice';
 import { useNavigate } from 'react-router-dom';
 import SprintModal from '../../Forms/CreateSprintForm';
+import { hasPermissionLegacy } from '../../../utils/permissions';
 
 interface SprintPlanningProps {
   boardId: string;
@@ -14,6 +16,8 @@ interface SprintPlanningProps {
 
 const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => {
   const { user } = useAppSelector(state => state.auth);
+  const { currentBoard } = useAppSelector(state => state.boards);
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const tasks = useTasksSync(boardId);
   
@@ -21,12 +25,32 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
+  const [canManageSprints, setCanManageSprints] = useState(false);
 
-  // Calculate team size
+  // Calculate team size based on board collaborators (for new sprints)
   const teamSize = useMemo(() => {
-    const assignees = new Set(tasks.map(t => t.assignedTo).filter(Boolean));
+    if (currentBoard && currentBoard.collaborators) {
+      return Math.max(currentBoard.collaborators.length, 1);
+    }
+    // Fallback to task assignees if board data not available
+    const assignees = new Set(tasks.map(t => t.assignedTo?.name).filter(Boolean));
     return Math.max(assignees.size, 1);
-  }, [tasks]);
+  }, [currentBoard, tasks]);
+
+  // Fetch board data if not already loaded
+  useEffect(() => {
+    if (user && boardId && (!currentBoard || currentBoard.id !== boardId)) {
+      dispatch(fetchBoard({ userId: user.uid, boardId }));
+    }
+  }, [user, boardId, currentBoard, dispatch]);
+
+  // Check sprint management permissions
+  useEffect(() => {
+    if (currentBoard && user) {
+      const hasPermission = hasPermissionLegacy(currentBoard, user.email || '', 'canManageSprints');
+      setCanManageSprints(hasPermission);
+    }
+  }, [currentBoard, user]);
 
   // Fetch sprints
   useEffect(() => {
@@ -49,7 +73,59 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
 
   // Get current active sprint
   const activeSprint = sprints.find(s => s.status === 'active');
-  const unassignedTasks = tasks.filter(task => !task.sprintId);
+  const unassignedTasks = tasks.filter(task => task.assignedTo === null && task.type !== 'subtask');
+  
+  // Get tasks for active sprint and calculate task type breakdown
+  const activeSprintTasks = activeSprint ? tasks.filter(task => task.sprintId === activeSprint.id) : [];
+  
+  // Helper function to get task points (handles null values)
+  const getTaskPoints = (task: any): number => {
+    if (task.points !== null && task.points !== undefined) {
+      return task.points;
+    }
+    // Fallback to priority-based points if no explicit points set
+    return task.priority === 'High' ? 8 : task.priority === 'Medium' ? 5 : 3;
+  };
+  
+  // Calculate real-time story points for active sprint
+  const realTimeStoryPoints = useMemo(() => {
+    return activeSprintTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+  }, [activeSprintTasks]);
+  
+  const taskTypeBreakdown = useMemo(() => {
+    const breakdown = {
+      epic: 0,
+      feature: 0,
+      story: 0,
+      bug: 0,
+      enhancement: 0,
+      poc: 0
+    };
+    
+    activeSprintTasks.forEach(task => {
+      if (task.type && task.type !== 'subtask' && breakdown.hasOwnProperty(task.type)) {
+        breakdown[task.type as keyof typeof breakdown]++;
+      }
+    });
+    
+    return breakdown;
+  }, [activeSprintTasks]);
+
+  // Calculate real-time values for all sprints
+  const sprintRealTimeData = useMemo(() => {
+    return sprints.map(sprint => {
+      const sprintTasks = tasks.filter(task => task.sprintId === sprint.id);
+      const realTimeStoryPoints = sprintTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+      const taskCount = sprintTasks.length;
+      
+      return {
+        sprintId: sprint.id,
+        realTimeStoryPoints,
+        taskCount,
+        hasChanges: sprint.totalStoryPoints !== realTimeStoryPoints || sprint.taskIds.length !== taskCount
+      };
+    });
+  }, [sprints, tasks]);
 
   const handleBackToBoard = () => {
     navigate(`/board/${boardId}`);
@@ -152,13 +228,15 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
               <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
               <span className="font-medium">Back to Board</span>
             </button>
-            <button
-              onClick={handleCreateSprint}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={16} />
-              Create Sprint
-            </button>
+            {canManageSprints && (
+              <button
+                onClick={handleCreateSprint}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={16} />
+                Create Sprint
+              </button>
+            )}
             </div>
         </div>
 
@@ -173,13 +251,15 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                 </p>
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => handleEditSprint(activeSprint)}
-                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  <Edit3 size={14} />
-                  Edit
-                </button>
+                {canManageSprints && (
+                  <button
+                    onClick={() => handleEditSprint(activeSprint)}
+                    className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    <Edit3 size={14} />
+                    Edit
+                  </button>
+                )}
                 <button
                   onClick={() => navigateToSprintAnalytics(activeSprint.sprintNumber)}
                   className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
@@ -199,7 +279,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
             
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-700">{activeSprint.totalStoryPoints}</div>
+                <div className="text-2xl font-bold text-green-700">{realTimeStoryPoints}</div>
                 <div className="text-sm text-green-600">Story Points</div>
               </div>
               <div className="text-center">
@@ -207,11 +287,19 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                 <div className="text-sm text-green-600">Days Duration</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-700">{activeSprint.teamSize}</div>
+                <div className="text-2xl font-bold text-green-700">
+                  {currentBoard?.collaborators?.length || 1}
+                </div>
                 <div className="text-sm text-green-600">Team Members</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-700">{(activeSprint as any).teamCapacityPerWeek || 'N/A'}</div>
+                <div className="text-2xl font-bold text-green-700">
+                  {(() => {
+                    const teamSize = currentBoard?.collaborators?.length || 1;
+                    const workHoursPerWeek = (activeSprint as any).estimatedWorkHoursPerWeek || 40;
+                    return teamSize * workHoursPerWeek;
+                  })()}
+                </div>
                 <div className="text-sm text-green-600">Capacity/Week</div>
               </div>
               <div className="text-center">
@@ -219,6 +307,32 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                   {Math.max(0, Math.ceil((new Date(activeSprint.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))}
                 </div>
                 <div className="text-sm text-green-600">Days Left</div>
+              </div>
+            </div>
+            
+            {/* Task Type Breakdown */}
+            <div className="mt-4 pt-4 border-t border-green-200">
+              <h4 className="text-sm font-semibold text-green-800 mb-3">Task Type Breakdown</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {Object.entries(taskTypeBreakdown).map(([type, count]) => {
+                  const typeConfig = {
+                    epic: { bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-200', label: 'Epic' },
+                    feature: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: 'Feature' },
+                    story: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Story' },
+                    bug: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200', label: 'Bug' },
+                    enhancement: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', label: 'Enhancement' },
+                    poc: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200', label: 'POC' }
+                  };
+                  
+                  const config = typeConfig[type as keyof typeof typeConfig];
+                  
+                  return (
+                    <div key={type} className={`${config.bg} ${config.border} border rounded-lg p-3 text-center`}>
+                      <div className={`text-lg font-bold ${config.text}`}>{count}</div>
+                      <div className={`text-xs ${config.text} font-medium`}>{config.label}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -275,13 +389,30 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleEditSprint(sprint)}
-                      className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
-                    >
-                      <Edit3 size={14} />
-                      {sprint.status === 'completed' ? 'View' : 'Edit'}
-                    </button>
+                    {canManageSprints ? (
+                      <button
+                        onClick={() => handleEditSprint(sprint)}
+                        className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
+                      >
+                        
+                        {sprint.status === 'completed' ? (
+                          <>
+                            <EyeIcon size={14} /> View
+                          </>
+                        ) : (
+                          <>
+                            <Edit3 size={14} /> Edit
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleEditSprint(sprint)}
+                        className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
+                      >
+                        <EyeIcon size={14} /> View
+                      </button>
+                    )}
                     {(sprint.status === 'active' || sprint.status === 'completed') && (
                       <>
                         <button
@@ -307,7 +438,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                         </button>
                       </>
                     )}
-                    {sprint.status === 'planning' && canStartSprint(sprint) && (
+                    {sprint.status === 'planning' && canStartSprint(sprint) && canManageSprints && (
                       <button
                         onClick={() => startSprint(sprint.id)}
                         className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
@@ -316,7 +447,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                         Start Sprint
                       </button>
                     )}
-                    {sprint.status === 'active' && (
+                    {sprint.status === 'active' && canManageSprints && (
                       <button
                         onClick={() => completeSprint(sprint.id)}
                         className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
@@ -330,22 +461,40 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                 
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-4 text-sm text-slate-600">
                   <div>
-                    <span className="font-medium">Points:</span> {sprint.totalStoryPoints}
+                    <span className="font-medium">Points:</span> {
+                      (() => {
+                        const realTimeData = sprintRealTimeData.find(data => data.sprintId === sprint.id);
+                        return realTimeData ? realTimeData.realTimeStoryPoints : 0;
+                      })()
+                    }
                   </div>
                   <div>
                     <span className="font-medium">Duration:</span> {sprint.duration} days
                   </div>
                   <div>
-                    <span className="font-medium">Team:</span> {sprint.teamSize} members
+                    <span className="font-medium">Team:</span> {
+                      currentBoard?.collaborators?.length || 1
+                    } members
                   </div>
                   <div>
-                    <span className="font-medium">Capacity:</span> {(sprint as any).teamCapacityPerWeek || 'N/A'}/wk
+                    <span className="font-medium">Capacity:</span> {
+                      (() => {
+                        const teamSize = currentBoard?.collaborators?.length || 1;
+                        const workHoursPerWeek = (sprint as any).estimatedWorkHoursPerWeek || 40;
+                        return teamSize * workHoursPerWeek;
+                      })()
+                    }/wk
                   </div>
                   <div>
                     <span className="font-medium">Goals:</span> {sprint.goals.length}
                   </div>
                   <div>
-                    <span className="font-medium">Tasks:</span> {sprint.taskIds.length}
+                    <span className="font-medium">Tasks:</span> {
+                      (() => {
+                        const realTimeData = sprintRealTimeData.find(data => data.sprintId === sprint.id);
+                        return realTimeData ? realTimeData.taskCount : 0;
+                      })()
+                    }
                   </div>
                 </div>
 
@@ -372,13 +521,20 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
           <div className="text-center py-12 text-slate-500">
             <Target size={48} className="mx-auto mb-4 text-slate-300" />
             <h4 className="text-lg font-medium mb-2">No sprints created yet</h4>
-            <p className="text-slate-400 mb-4">Create your first sprint to start planning and tracking work</p>
-            <button
-              onClick={handleCreateSprint}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Create First Sprint
-            </button>
+            <p className="text-slate-400 mb-4">
+              {canManageSprints 
+                ? "Create your first sprint to start planning and tracking work"
+                : "Only managers and admins can create sprints. Contact your manager to get started."
+              }
+            </p>
+            {canManageSprints && (
+              <button
+                onClick={handleCreateSprint}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create First Sprint
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -395,6 +551,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
         onSprintSaved={handleSprintSaved}
         tasks={tasks}
         teamSize={teamSize}
+        currentBoard={currentBoard}
       />
     </div>
   );

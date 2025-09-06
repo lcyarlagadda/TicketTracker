@@ -1,4 +1,4 @@
-// components/Modals/TaskModal.tsx - Enhanced version with Sprint Management
+// components/Modals/TaskModal.tsx
 import React, { useEffect, useState } from "react";
 import {
   X,
@@ -6,7 +6,6 @@ import {
   User,
   MessageCircle,
   FileText,
-  Tag,
   Save,
   Edit3,
   Clock,
@@ -24,9 +23,13 @@ import {
   Check,
   Hash,
   Zap,
+  Layers,
+  Crown,
+  Copy,
 } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
+import { notificationService } from "../../services/notificationService";
 import {
   updateTask,
   createTask,
@@ -39,6 +42,7 @@ import {
   FileAttachment,
   Collaborator,
   Sprint,
+  TaskType,
 } from "../../store/types/types";
 import ConfirmModal from "../Atoms/ConfirmModal";
 import CustomDropdown from "../Atoms/CustomDropDown";
@@ -49,24 +53,25 @@ interface TaskModalProps {
   task: Task;
   onClose: () => void;
   sprints?: Sprint[];
+  existingTasks?: Task[];
 }
 
-const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) => {
+const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], existingTasks = [] }) => {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const { currentBoard } = useAppSelector((state) => state.boards);
   const [isVisible, setIsVisible] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // Form state
+  // Form state - all directly editable with unified save
   const [title, setTitle] = useState(task.title || "");
   const [priority, setPriority] = useState(task.priority || "Medium");
-  const [points, setPoints] = useState(task.points || 3);
+  const [points, setPoints] = useState(task.points !== null && task.points !== undefined ? task.points : null);
+  const [taskType, setTaskType] = useState(task.type || "story");
   const [description, setDescription] = useState(task.description || "");
-  const [assignedTo, setAssignedTo] = useState(task.assignedTo || "");
+  const [assignedTo, setAssignedTo] = useState(task.assignedTo?.name || "");
   const [dueDate, setDueDate] = useState(task.dueDate || "");
-  const [tags, setTags] = useState<string[]>(task.tags || []);
-  const [newTag, setNewTag] = useState("");
-  const [showTagInput, setShowTagInput] = useState(false);
+  const [epics, setEpics] = useState<string[]>(task.epics || []);
   const [files, setFiles] = useState<File[]>([]);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -75,12 +80,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
 
   // Sprint state
   const [sprintId, setSprintId] = useState(task.sprintId || "");
-  const [editingSprint, setEditingSprint] = useState(false);
 
-  // Edit state for title, priority, and points
+  // Edit state for title only (other fields are now directly editable)
   const [editingTitle, setEditingTitle] = useState(false);
-  const [editingPriority, setEditingPriority] = useState(false);
-  const [editingPoints, setEditingPoints] = useState(false);
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>(task.comments || []);
@@ -115,6 +117,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     setTimeout(() => setIsVisible(true), 50);
   }, []);
 
+  // Track changes for unified save
+  useEffect(() => {
+    const hasChanges = 
+      title !== (task.title || "") ||
+      priority !== (task.priority || "Medium") ||
+      points !== (task.points !== null && task.points !== undefined ? task.points : null) ||
+      taskType !== (task.type || "story") ||
+      description !== (task.description || "") ||
+      assignedTo !== (task.assignedTo?.name || "") ||
+      dueDate !== (task.dueDate || "") ||
+      sprintId !== (task.sprintId || "") ||
+      JSON.stringify(epics.sort()) !== JSON.stringify((task.epics || []).sort()) ||
+      comments !== task.comments ||
+      files.length > 0;
+
+    setUnsavedChanges(hasChanges);
+  }, [title, priority, points, taskType, description, assignedTo, dueDate, sprintId, epics, comments, files, task]);
+
   // Listen to child tasks
   useEffect(() => {
     if (!user || !currentBoard) return;
@@ -136,7 +156,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
   // Get current sprint info
   const currentSprint = sprintId ? sprints.find(s => s.id === sprintId) : null;
   const activeSprints = sprints.filter(s => s.status === 'active' || s.status === 'planning');
-  console.log("Active sprints", {sprints, currentSprint, sprintId});
 
   // Sprint options
   const sprintOptions = [
@@ -147,6 +166,53 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }))
   ];
 
+  const taskTypeConfig = {
+    epic: { 
+      bg: 'bg-violet-100',
+      text: 'text-violet-700',
+      border: 'border-violet-200',
+      label: 'Epic'
+    },
+    feature: { 
+      bg: 'bg-blue-100',
+      text: 'text-blue-700',
+      border: 'border-blue-200',
+      label: 'Feature'
+    },
+    story: { 
+      bg: 'bg-green-100',
+      text: 'text-green-700',
+      border: 'border-green-200',
+      label: 'Story'
+    },
+    bug: { 
+      bg: 'bg-red-100',
+      text: 'text-red-700',
+      border: 'border-red-200',
+      label: 'Bug'
+    },
+    enhancement: { 
+      bg: 'bg-orange-100',
+      text: 'text-orange-700',
+      border: 'border-orange-200',
+      label: 'Enhancement'
+    },
+    subtask: { 
+      bg: 'bg-gray-100',
+      text: 'text-gray-700',
+      border: 'border-gray-200',
+      label: 'Subtask'
+    },
+    poc: { 
+      bg: 'bg-purple-100',
+      text: 'text-purple-700',
+      border: 'border-purple-200',
+      label: 'POC'
+    },
+  };
+
+  const typeConfig = taskTypeConfig[taskType as keyof typeof taskTypeConfig] || taskTypeConfig.story;
+
   const closeModal = () => {
     if (unsavedChanges) {
       setShowWarning(true);
@@ -154,6 +220,16 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
     setIsVisible(false);
     setTimeout(() => onClose(), 200);
+  };
+
+  const handleCopyTaskId = async () => {
+    try {
+      await navigator.clipboard.writeText(task.id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy task ID:', err);
+    }
   };
 
   // Title validation function
@@ -186,38 +262,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       return;
     }
     setEditingTitle(false);
-    if (title.trim() !== task.title) {
-      setUnsavedChanges(true);
-    }
-  };
-
-  // Handle priority save
-  const handleSavePriority = () => {
-    setEditingPriority(false);
-    if (priority !== task.priority) {
-      setUnsavedChanges(true);
-    }
-  };
-
-  // Handle points save
-  const handleSavePoints = () => {
-    const validationError = validatePoints(points);
-    if (validationError) {
-      setErrorMessage(validationError);
-      return;
-    }
-    setEditingPoints(false);
-    if (points !== task.points) {
-      setUnsavedChanges(true);
-    }
-  };
-
-  // Handle sprint save
-  const handleSaveSprint = () => {
-    setEditingSprint(false);
-    if (sprintId !== (task.sprintId || "")) {
-      setUnsavedChanges(true);
-    }
   };
 
   // Handle title cancel
@@ -226,75 +270,21 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     setEditingTitle(false);
   };
 
-  // Handle priority cancel
-  const handleCancelPriority = () => {
-    setPriority(task.priority || "Medium");
-    setEditingPriority(false);
+  // Epic management functions
+
+  const handleRemoveEpic = (epicToRemove: string) => {
+    setEpics(prev => prev.filter(epic => epic !== epicToRemove));
   };
 
-  // Handle points cancel
-  const handleCancelPoints = () => {
-    setPoints(task.points || 3);
-    setEditingPoints(false);
-  };
+  // Get epic-type tasks from the board
+  const epicTasks = existingTasks
+    .filter(existingTask => existingTask.type === 'epic' && existingTask.id !== task.id) // Exclude current task
+    .sort((a, b) => a.title.localeCompare(b.title));
 
-  // Handle sprint cancel
-  const handleCancelSprint = () => {
-    setSprintId(task.sprintId || "");
-    setEditingSprint(false);
-  };
-
-  const validateSubtaskForm = (
-    formData: typeof newChildTask
-  ): string | null => {
-    if (!formData.title.trim()) {
-      return "Subtask title is required.";
-    }
-
-    if (formData.title.trim().length < 3) {
-      return "Subtask title must be at least 3 characters long.";
-    }
-
-    if (formData.title.trim().length > 100) {
-      return "Subtask title must be less than 100 characters.";
-    }
-
-    if (formData.description.length > 500) {
-      return "Subtask description must be less than 500 characters.";
-    }
-
-    if (formData.dueDate) {
-      const selectedDate = new Date(formData.dueDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (isNaN(selectedDate.getTime())) {
-        return "Please enter a valid due date.";
-      }
-    }
-
-    return null; // No validation errors
-  };
-
+  // Child task functions (keeping existing implementation)
   const handleAddChildTask = async () => {
-    // Validation with error modal
     if (!newChildTask.title.trim()) {
       setErrorMessage("Subtask title is required.");
-      return;
-    }
-
-    if (newChildTask.title.trim().length < 3) {
-      setErrorMessage("Subtask title must be at least 3 characters long.");
-      return;
-    }
-
-    if (newChildTask.title.trim().length > 100) {
-      setErrorMessage("Subtask title must be less than 100 characters.");
-      return;
-    }
-
-    if (newChildTask.description.length > 500) {
-      setErrorMessage("Subtask description must be less than 500 characters.");
       return;
     }
 
@@ -303,39 +293,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       return;
     }
 
-    // Check for duplicate subtask titles
     const isDuplicate = childTasks.some(
-      (ct) =>
-        ct.title.toLowerCase().trim() ===
-        newChildTask.title.toLowerCase().trim()
+      (ct) => ct.title.toLowerCase().trim() === newChildTask.title.toLowerCase().trim()
     );
 
     if (isDuplicate) {
       setErrorMessage("A subtask with this title already exists.");
       return;
     }
-
-    // Validate due date if provided
-    if (newChildTask.dueDate) {
-      const selectedDate = new Date(newChildTask.dueDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (selectedDate < today) {
-        setConfirmMessage(
-          "The due date is in the past. Do you want to continue?"
-        );
-        setConfirmAction(() => () => executeAddChildTask());
-        return;
-      }
-    }
-
-    executeAddChildTask();
-  };
-
-  // 4. Separate execution function for adding child task
-  const executeAddChildTask = async () => {
-    if (!user || !currentBoard) return;
 
     try {
       const taskData = {
@@ -344,12 +309,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         priority: newChildTask.priority,
         dueDate: newChildTask.dueDate,
         status: "todo",
-        assignedTo: newChildTask.assignedTo,
+        assignedTo: newChildTask.assignedTo && newChildTask.assignedTo !== "Unassigned" 
+          ? {
+              uid: collaborators.find(c => c.name === newChildTask.assignedTo)?.email || "",
+              email: collaborators.find(c => c.name === newChildTask.assignedTo)?.email || "",
+              name: newChildTask.assignedTo
+            }
+          : null,
         parentTaskId: task.id,
-        tags: [],
+        epics: [],
         comments: [],
         files: [],
-        points: 3, // Default points for subtasks
+        points: 3,
+        type: "subtask" as TaskType,
         progressLog: [
           {
             type: "created" as const,
@@ -365,7 +337,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         },
         createdAt: Timestamp.now(),
         boardId: currentBoard.id,
-        type: "subtask" as const
       };
 
       await dispatch(
@@ -376,35 +347,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         })
       ).unwrap();
 
-      // Add detailed activity log to parent task
-      const parentLogEntry = {
-        type: "child-task-added" as const,
-        desc: `Subtask "${newChildTask.title}" added${
-          newChildTask.assignedTo
-            ? ` and assigned to ${newChildTask.assignedTo}`
-            : ""
-        }${
-          newChildTask.dueDate
-            ? ` with due date ${new Date(
-                newChildTask.dueDate
-              ).toLocaleDateString()}`
-            : ""
-        }`,
-        timestamp: Timestamp.now(),
-        user: user.displayName || user.email,
-      };
-
-      const updatedProgressLog = [...(task.progressLog || []), parentLogEntry];
-      await dispatch(
-        updateTask({
-          userId: user.uid,
-          boardId: currentBoard.id,
-          taskId: task.id,
-          updates: { progressLog: updatedProgressLog },
-        })
-      ).unwrap();
-
-      // Reset form
       setNewChildTask({
         title: "",
         description: "",
@@ -419,137 +361,62 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
-  // 5. Updated handleSaveChildTask with Error Modal
+  const handleToggleChildTask = async (childTaskId: string, currentStatus: string) => {
+    if (!user || !currentBoard) return;
+
+    try {
+      const newStatus = currentStatus === "done" ? "todo" : "done";
+      await dispatch(
+        updateTask({
+          userId: user.uid,
+          boardId: currentBoard.id,
+          taskId: childTaskId,
+          updates: { status: newStatus },
+        })
+      ).unwrap();
+    } catch (error) {
+      console.error("Error toggling child task:", error);
+      setErrorMessage("Failed to update subtask status. Please try again.");
+    }
+  };
+
+  const handleDeleteChildTask = async (childTaskId: string) => {
+    if (!user || !currentBoard) return;
+
+    try {
+      await dispatch(
+        deleteTask({
+          userId: user.uid,
+          boardId: currentBoard.id,
+          taskId: childTaskId,
+        })
+      ).unwrap();
+    } catch (error) {
+      console.error("Error deleting child task:", error);
+      setErrorMessage("Failed to delete subtask. Please try again.");
+    }
+  };
+
+  const handleEditChildTask = (childTask: Task) => {
+    setEditingChildTask(childTask.id);
+    setEditChildTaskData({
+      title: childTask.title,
+      description: childTask.description || "",
+      assignedTo: childTask.assignedTo?.name || "",
+      dueDate: childTask.dueDate || "",
+      priority: childTask.priority || "Medium",
+    });
+  };
+
   const handleSaveChildTask = async (childTaskId: string) => {
-    // Validation with error modal
     if (!editChildTaskData.title.trim()) {
       setErrorMessage("Subtask title is required.");
       return;
     }
 
-    if (editChildTaskData.title.trim().length < 3) {
-      setErrorMessage("Subtask title must be at least 3 characters long.");
-      return;
-    }
-
-    if (editChildTaskData.title.trim().length > 100) {
-      setErrorMessage("Subtask title must be less than 100 characters.");
-      return;
-    }
-
-    if (editChildTaskData.description.length > 500) {
-      setErrorMessage("Subtask description must be less than 500 characters.");
-      return;
-    }
-
-    if (!user || !currentBoard) {
-      setErrorMessage("Unable to save subtask. Please try again.");
-      return;
-    }
-
-    try {
-      const childTask = childTasks.find((ct) => ct.id === childTaskId);
-      if (!childTask) {
-        setErrorMessage("Subtask not found.");
-        return;
-      }
-
-      // Check for duplicate titles (excluding current task)
-      const isDuplicate = childTasks.some(
-        (ct) =>
-          ct.id !== childTaskId &&
-          ct.title.toLowerCase().trim() ===
-            editChildTaskData.title.toLowerCase().trim()
-      );
-
-      if (isDuplicate) {
-        setErrorMessage("A subtask with this title already exists.");
-        return;
-      }
-
-      // Validate due date if provided
-      if (editChildTaskData.dueDate) {
-        const selectedDate = new Date(editChildTaskData.dueDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        if (selectedDate < today) {
-          setConfirmMessage(
-            "The due date is in the past. Do you want to continue?"
-          );
-          setConfirmAction(() => () => executeSaveChildTask(childTaskId));
-          return;
-        }
-      }
-
-      executeSaveChildTask(childTaskId);
-    } catch (error) {
-      console.error("Error updating child task:", error);
-      setErrorMessage("Failed to update subtask. Please try again.");
-    }
-  };
-
-  // 6. Separate execution function for saving child task
-  const executeSaveChildTask = async (childTaskId: string) => {
     if (!user || !currentBoard) return;
 
     try {
-      const childTask = childTasks.find((ct) => ct.id === childTaskId);
-      if (!childTask) return;
-
-      // Track changes for activity log
-      const changes = [];
-      if (childTask.title !== editChildTaskData.title.trim()) {
-        changes.push(
-          `title changed from "${
-            childTask.title
-          }" to "${editChildTaskData.title.trim()}"`
-        );
-      }
-      if (childTask.description !== editChildTaskData.description.trim()) {
-        changes.push(`description updated`);
-      }
-      if (childTask.assignedTo !== editChildTaskData.assignedTo) {
-        changes.push(
-          `assignee changed from "${
-            childTask.assignedTo || "Unassigned"
-          }" to "${editChildTaskData.assignedTo || "Unassigned"}"`
-        );
-      }
-      if (childTask.dueDate !== editChildTaskData.dueDate) {
-        const oldDate = childTask.dueDate
-          ? new Date(childTask.dueDate).toLocaleDateString()
-          : "No date";
-        const newDate = editChildTaskData.dueDate
-          ? new Date(editChildTaskData.dueDate).toLocaleDateString()
-          : "No date";
-        changes.push(`due date changed from ${oldDate} to ${newDate}`);
-      }
-      if (childTask.priority !== editChildTaskData.priority) {
-        changes.push(
-          `priority changed from ${childTask.priority} to ${editChildTaskData.priority}`
-        );
-      }
-
-      // Create activity log entries
-      const childTaskLogEntry = {
-        type: "task-updated" as const,
-        desc:
-          changes.length > 0
-            ? `Subtask updated: ${changes.join(", ")}`
-            : "Subtask details updated",
-        timestamp: Timestamp.now(),
-        user: user.displayName || user.email,
-      };
-
-      const parentTaskLogEntry = {
-        type: "task-updated" as const,
-        desc: `Subtask "${editChildTaskData.title}" was updated`,
-        timestamp: Timestamp.now(),
-        user: user.displayName || user.email,
-      };
-
-      // Update child task
       await dispatch(
         updateTask({
           userId: user.uid,
@@ -558,29 +425,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
           updates: {
             title: editChildTaskData.title.trim(),
             description: editChildTaskData.description.trim(),
-            assignedTo: editChildTaskData.assignedTo,
+            assignedTo: editChildTaskData.assignedTo && editChildTaskData.assignedTo !== "Unassigned" 
+              ? {
+                  uid: collaborators.find(c => c.name === editChildTaskData.assignedTo)?.email || "",
+                  email: collaborators.find(c => c.name === editChildTaskData.assignedTo)?.email || "",
+                  name: editChildTaskData.assignedTo
+                }
+              : null,
             dueDate: editChildTaskData.dueDate,
             priority: editChildTaskData.priority,
-            progressLog: [...(childTask.progressLog || []), childTaskLogEntry],
           },
         })
       ).unwrap();
 
-      // Update parent task's progress log
-      const updatedParentProgressLog = [
-        ...(task.progressLog || []),
-        parentTaskLogEntry,
-      ];
-      await dispatch(
-        updateTask({
-          userId: user.uid,
-          boardId: currentBoard.id,
-          taskId: task.id,
-          updates: { progressLog: updatedParentProgressLog },
-        })
-      ).unwrap();
-
-      // Reset editing state
       setEditingChildTask(null);
       setEditChildTaskData({
         title: "",
@@ -595,112 +452,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     }
   };
 
-  // 7. Updated handleDeleteChildTask (no confirm needed, using confirm modal)
-  const handleDeleteChildTask = async (
-    childTaskId: string,
-    childTaskTitle: string
-  ) => {
-    if (!user || !currentBoard) return;
-
-    try {
-      await dispatch(
-        deleteTask({
-          userId: user.uid,
-          boardId: currentBoard.id,
-          taskId: childTaskId,
-        })
-      ).unwrap();
-
-      // Add to parent task's progress log
-      const parentLogEntry = {
-        type: "child-task-deleted" as const,
-        desc: `Subtask "${childTaskTitle}" was deleted`,
-        timestamp: Timestamp.now(),
-        user: user.displayName || user.email,
-      };
-
-      const updatedParentProgressLog = [
-        ...(task.progressLog || []),
-        parentLogEntry,
-      ];
-      await dispatch(
-        updateTask({
-          userId: user.uid,
-          boardId: currentBoard.id,
-          taskId: task.id,
-          updates: { progressLog: updatedParentProgressLog },
-        })
-      ).unwrap();
-    } catch (error) {
-      console.error("Error deleting child task:", error);
-      setErrorMessage("Failed to delete subtask. Please try again.");
-    }
-  };
-
-  // 8. Updated handleToggleChildTask with error modal
-  const handleToggleChildTask = async (
-    childTaskId: string,
-    currentStatus: string
-  ) => {
-    if (!user || !currentBoard) {
-      setErrorMessage("Unable to update subtask status. Please try again.");
-      return;
-    }
-
-    try {
-      const newStatus = currentStatus === "done" ? "todo" : "done";
-      const childTask = childTasks.find((ct) => ct.id === childTaskId);
-      if (!childTask) {
-        setErrorMessage("Subtask not found.");
-        return;
-      }
-
-      const childTaskLogEntry = {
-        type: "status-change" as const,
-        desc: `Subtask marked as ${newStatus}`,
-        timestamp: Timestamp.now(),
-        user: user.displayName || user.email,
-      };
-
-      const parentTaskLogEntry = {
-        type: "status-change" as const,
-        desc: `Subtask "${childTask.title}" marked as ${newStatus}`,
-        timestamp: Timestamp.now(),
-        user: user.displayName || user.email,
-      };
-
-      // Update child task status
-      await dispatch(
-        updateTask({
-          userId: user.uid,
-          boardId: currentBoard.id,
-          taskId: childTaskId,
-          updates: {
-            status: newStatus,
-            progressLog: [...(childTask.progressLog || []), childTaskLogEntry],
-          },
-        })
-      ).unwrap();
-
-      // Update parent task's progress log
-      const updatedParentProgressLog = [
-        ...(task.progressLog || []),
-        parentTaskLogEntry,
-      ];
-      await dispatch(
-        updateTask({
-          userId: user.uid,
-          boardId: currentBoard.id,
-          taskId: task.id,
-          updates: { progressLog: updatedParentProgressLog },
-        })
-      ).unwrap();
-    } catch (error) {
-      console.error("Error toggling child task:", error);
-      setErrorMessage("Failed to update subtask status. Please try again.");
-    }
-  };
-
+  // Unified save function
   const handleSave = async () => {
     if (!user || !currentBoard) return;
 
@@ -724,6 +476,17 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         });
       }
 
+      // Check for task type changes
+      if (taskType !== task.type) {
+        updates.type = taskType;
+        newLogEntries.push({
+          type: "type-change" as const,
+          desc: `Task type changed from ${task.type} to ${taskType}`,
+          timestamp: Timestamp.now(),
+          user: user.displayName || user.email,
+        });
+      }
+
       // Check for priority changes
       if (priority !== task.priority) {
         updates.priority = priority;
@@ -736,16 +499,18 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       }
 
       // Check for points changes
-      if (points !== task.points) {
-        const pointsError = validatePoints(points);
-        if (pointsError) {
-          setErrorMessage(pointsError);
-          return;
+      if (points !== (task.points !== null && task.points !== undefined ? task.points : null)) {
+        if (points !== null) {
+          const pointsError = validatePoints(points);
+          if (pointsError) {
+            setErrorMessage(pointsError);
+            return;
+          }
         }
         updates.points = points;
         newLogEntries.push({
           type: "points-change" as const,
-          desc: `Story points changed from ${task.points || 'not set'} to ${points}`,
+          desc: `Story points changed from ${task.points || 'not set'} to ${points || 'not set'}`,
           timestamp: Timestamp.now(),
           user: user.displayName || user.email,
         });
@@ -780,11 +545,21 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         });
       }
 
-      if (assignedTo !== (task.assignedTo || "")) {
-        updates.assignedTo = assignedTo;
+      if (assignedTo !== (task.assignedTo?.name || "")) {
+        // Find the collaborator object for the selected assignee
+        const selectedCollaborator = assignedTo && assignedTo !== "Unassigned" 
+          ? collaborators.find(c => c.name === assignedTo)
+          : null;
+        
+        updates.assignedTo = selectedCollaborator ? {
+          uid: selectedCollaborator.email, // Using email as uid for now
+          email: selectedCollaborator.email,
+          name: selectedCollaborator.name
+        } : null;
+        
         newLogEntries.push({
           type: "assignment-change" as const,
-          desc: `Reassigned from ${task.assignedTo || "Unassigned"} to ${
+          desc: `Reassigned from ${task.assignedTo?.name || "Unassigned"} to ${
             assignedTo || "Unassigned"
           }`,
           timestamp: Timestamp.now(),
@@ -803,13 +578,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       }
 
       if (
-        JSON.stringify([...tags].sort()) !==
-        JSON.stringify([...(task.tags || [])].sort())
+        JSON.stringify([...epics].sort()) !==
+        JSON.stringify([...(task.epics || [])].sort())
       ) {
-        updates.tags = tags;
+        updates.epics = epics;
         newLogEntries.push({
-          type: "tags-change" as const,
-          desc: "Tags updated",
+          type: "epics-change" as const,
+          desc: "Epics updated",
           timestamp: Timestamp.now(),
           user: user.displayName || user.email,
         });
@@ -848,6 +623,29 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
             updates,
           })
         ).unwrap();
+
+        // Send notification if task was assigned to someone new
+        if (updates.assignedTo && updates.assignedTo.email !== user.email) {
+          try {
+            const taskUrl = `${window.location.origin}/board/${currentBoard.id}`;
+            const boardUrl = `${window.location.origin}/board/${currentBoard.id}`;
+            
+            await notificationService.notifyTaskAssigned({
+              assigneeEmail: updates.assignedTo.email,
+              assigneeName: updates.assignedTo.name,
+              taskTitle: title,
+              boardName: currentBoard.title,
+              assignedBy: user.displayName || user.email || 'Unknown User',
+              taskUrl,
+              boardUrl,
+              taskId: task.id,
+            });
+            console.log('Task assignment notification sent successfully');
+          } catch (notificationError) {
+            console.error('Failed to send task assignment notification:', notificationError);
+            // Don't show error to user as the task was still updated successfully
+          }
+        }
       }
 
       setUnsavedChanges(false);
@@ -856,18 +654,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
       setTimeout(() => onClose(), 200);
     } catch (error) {
       console.error("Error saving task:", error);
+      setErrorMessage("Failed to save changes. Please try again.");
     }
-  };
-
-  const handleEditChildTask = (childTask: Task) => {
-    setEditingChildTask(childTask.id);
-    setEditChildTaskData({
-      title: childTask.title,
-      description: childTask.description || "",
-      assignedTo: childTask.assignedTo || "",
-      dueDate: childTask.dueDate || "",
-      priority: childTask.priority || "Medium",
-    });
   };
 
   const handleAddComment = async () => {
@@ -882,13 +670,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     const updatedComments = [...comments, newComment];
     setComments(updatedComments);
     setCommentText("");
-    setUnsavedChanges(true);
   };
 
   const handleDeleteComment = (index: number) => {
     const updatedComments = comments.filter((_, i) => i !== index);
     setComments(updatedComments);
-    setUnsavedChanges(true);
   };
 
   const handleEditComment = (index: number) => {
@@ -900,7 +686,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
     };
     setComments(updatedComments);
     setEditingIndex(null);
-    setUnsavedChanges(true);
   };
 
   const getChildTasksProgress = () => {
@@ -915,14 +700,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
 
   const progress = getChildTasksProgress();
 
-  const priorityColors = {
-    Low: "from-green-400 to-green-600",
-    Medium: "from-yellow-400 to-orange-500",
-    High: "from-red-400 to-red-600",
-  };
+  // Story point options (Fibonacci sequence) with "No Points" option
+  const storyPointOptions = ['No Points', '1', '2', '3', '5', '8', '13', '21'];
 
-  // Story point options (Fibonacci sequence)
-  const storyPointOptions = ['1', '2', '3', '5', '8', '13', '21'];
+  // Task type options
+  const taskTypeOptions = task.parentTaskId 
+    ? ["subtask"]
+    : ["epic", "feature", "story", "bug", "enhancement", "poc"];
 
   return (
     <div
@@ -940,55 +724,83 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
           <div className="absolute inset-0 bg-white/10"></div>
           <div className="relative flex justify-between items-start">
             <div className="flex-1">
-              {/* Editable Title */}
-              <div className="mb-2">
-                {editingTitle ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          handleSaveTitle();
-                        } else if (e.key === "Escape") {
-                          handleCancelTitle();
-                        }
-                      }}
-                      className="text-2xl font-bold bg-white/20 text-white placeholder-white/70 border-2 border-white/30 rounded-lg px-3 py-1 focus:outline-none focus:border-white/50 flex-1"
-                      placeholder="Task title"
-                      autoFocus
-                    />
-                    <button
-                      onClick={handleSaveTitle}
-                      className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-                      title="Save title"
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button
-                      onClick={handleCancelTitle}
-                      className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
-                      title="Cancel"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                    <div className="flex items-center gap-2 group">
-                    <h2 className="text-2xl font-bold text-white flex-1">
-                      {title}
+              {/* Editable Title and Task Info Row */}
+              <div className="flex items-start justify-between mb-2 gap-4 flex-wrap">
+                {/* Title (editable) */}
+                <div className="flex-1 min-w-0">
+                  {editingTitle ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleSaveTitle();
+                          } else if (e.key === "Escape") {
+                            handleCancelTitle();
+                          }
+                        }}
+                        className="text-2xl font-bold bg-white/20 text-white placeholder-white/70 border-2 border-white/30 rounded-lg px-3 py-1 focus:outline-none focus:border-white/50 flex-1"
+                        placeholder="Task title"
+                        autoFocus
+                      />
                       <button
-                      onClick={() => setEditingTitle(true)}
-                      className="ml-2 p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
-                      title="Edit title"
-                      style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}
+                        onClick={handleSaveTitle}
+                        className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
+                        title="Save title"
                       >
-                      <Edit3 size={16} />
+                        <Check size={16} />
                       </button>
-                    </h2>
+                      <button
+                        onClick={handleCancelTitle}
+                        className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+                        title="Cancel"
+                      >
+                        <X size={16} />
+                      </button>
                     </div>
-                )}
+                  ) : (
+                    <div className="flex items-center gap-2 group">
+                      <h2 className="text-2xl font-bold text-white flex-1 truncate">
+                        {title}
+                        <button
+                          onClick={() => setEditingTitle(true)}
+                          className="ml-2 p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
+                          title="Edit title"
+                          style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                      </h2>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Task ID and Type Row (right) */}
+                <div className="flex items-center gap-3 flex-shrink-0 mt-2 md:mt-0 h-10">
+                  {/* Sprint Info */}
+                  {currentSprint && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-white/20 text-white rounded-lg h-10 min-h-[2.5rem]">
+                      <Zap size={14} />
+                      <span className="text-sm font-medium">Sprint {currentSprint.sprintNumber}</span>
+                    </div>
+                  )}
+                  <div className={`px-3 py-1 rounded-lg ${typeConfig.bg} border border-white/30 h-10 min-h-[2.5rem] flex items-center`}>
+                    <span className={`text-sm font-semibold text-slate-700`}>
+                      {typeConfig.label}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleCopyTaskId}
+                    className="flex items-center gap-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-white transition-colors h-10 min-h-[2.5rem]"
+                    title="Copy Task ID"
+                    style={{ minWidth: "110px" }}
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                    <span className="font-mono text-sm">{task.id.slice(-8)}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center gap-4 text-blue-100 text-sm">
@@ -1006,111 +818,15 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                     {progress.completed}/{progress.total} subtasks
                   </span>
                 )}
-                {/* Sprint Info */}
-                {currentSprint && (
-                  <span className="flex items-center gap-2 px-2 py-1 bg-white/20 rounded-full">
-                    <Zap size={14} />
-                    Sprint {currentSprint.sprintNumber}
-                  </span>
-                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Editable Priority */}
-              {editingPriority ? (
-                <div className="flex items-center gap-2">
-                  <CustomDropdown
-                    options={["Low", "Medium", "High"]}
-                    selected={priority}
-                    setSelected={(val) =>
-                      setPriority(val as "Low" | "Medium" | "High")
-                    }
-                    placeholder="Priority"
-                    className="w-32 z-50"
-                  />
-                  <button
-                    onClick={handleSavePriority}
-                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-                    title="Save priority"
-                  >
-                    <Check size={16} />
-                  </button>
-                  <button
-                    onClick={handleCancelPriority}
-                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
-                    title="Cancel"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <div
-                    className={`px-3 py-1 rounded-full bg-gradient-to-r ${
-                      priorityColors[priority as keyof typeof priorityColors]
-                    } text-white text-sm font-semibold shadow-lg`}
-                  >
-                    {priority} Priority
-                  </div>
-                  <button
-                    onClick={() => setEditingPriority(true)}
-                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
-                    title="Edit priority"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                </div>
-              )}
-
-              {/* Editable Story Points */}
-              {editingPoints ? (
-                <div className="flex items-center gap-2">
-                  <CustomDropdown
-                    options={storyPointOptions}
-                    selected={points.toString()}
-                    setSelected={(val) => setPoints(parseInt(val))}
-                    placeholder="Points"
-                    className="w-24"
-                  />
-                  <button
-                    onClick={handleSavePoints}
-                    className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-                    title="Save points"
-                  >
-                    <Check size={16} />
-                  </button>
-                  <button
-                    onClick={handleCancelPoints}
-                    className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
-                    title="Cancel"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <div className="px-3 py-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-sm font-semibold shadow-lg flex items-center gap-1">
-                    <Hash size={14} />
-                    {points} {points === 1 ? 'Point' : 'Points'}
-                  </div>
-                  <button
-                    onClick={() => setEditingPoints(true)}
-                    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors opacity-0 group-hover:opacity-100"
-                    title="Edit story points"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                </div>
-              )}
-
-              <button
-                onClick={closeModal}
-                className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all duration-200 hover:scale-110"
-              >
-                <X size={20} />
-              </button>
-            </div>
+            <button
+              onClick={closeModal}
+              className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all duration-200 hover:scale-110 ml-6"
+            >
+              <X size={20} />
+            </button>
           </div>
         </div>
 
@@ -1127,16 +843,68 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
             </div>
             <textarea
               value={description}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                setUnsavedChanges(true);
-              }}
+              onChange={(e) => setDescription(e.target.value)}
               className="w-full min-h-[100px] p-4 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-all duration-200 resize-none"
               placeholder="Edit task description..."
             />
           </div>
 
-                    {/* Sprint Assignment */}
+          {/* Task Type, Priority, and Story Points Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {/* Task Type */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-slate-200">
+                  <Layers size={18} className="text-slate-600" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Task Type</h3>
+              </div>
+              <CustomDropdown
+                options={taskTypeOptions}
+                selected={taskType}
+                setSelected={(val) => setTaskType(val as TaskType)}
+                placeholder="Select type"
+                className="w-full"
+                disabled={task.parentTaskId ? true : false}
+              />
+            </div>
+
+            {/* Priority */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-orange-100">
+                  <Target size={18} className="text-orange-600" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Priority</h3>
+              </div>
+              <CustomDropdown
+                options={["Low", "Medium", "High"]}
+                selected={priority}
+                setSelected={(val) => setPriority(val as "Low" | "Medium" | "High")}
+                placeholder="Priority"
+                className="w-full"
+              />
+            </div>
+
+            {/* Story Points */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-indigo-100">
+                  <Hash size={18} className="text-indigo-600" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Story Points</h3>
+              </div>
+              <CustomDropdown
+                options={storyPointOptions}
+                selected={points ? points.toString() : "No Points"}
+                setSelected={(val) => setPoints(val === "No Points" ? null : parseInt(val))}
+                placeholder="Points"
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* Sprint Assignment */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <div className="p-2 rounded-lg bg-purple-100">
@@ -1144,57 +912,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
               </div>
               <h3 className="font-semibold text-slate-800">Sprint Assignment</h3>
             </div>
-            
-            {editingSprint ? (
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <CustomDropdown
-                    options={sprintOptions.map(opt => opt.label)}
-                    selected={sprintId 
-                      ? sprintOptions.find(opt => opt.value === sprintId)?.label || ""
-                      : "Backlog"
-                    }
-                    setSelected={(label) => {
-                      const option = sprintOptions.find(opt => opt.label === label);
-                      setSprintId(option?.value || "");
-                    }}
-                    placeholder="Select sprint"
-                    className="w-full"
-                  />
-                </div>
-                <button
-                  onClick={handleSaveSprint}
-                  className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors"
-                  title="Save sprint assignment"
-                >
-                  <Check size={16} />
-                </button>
-                <button
-                  onClick={handleCancelSprint}
-                  className="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
-                  title="Cancel"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between py-2 px-4 bg-purple-50 rounded-xl border border-purple-200 group">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="font-semibold text-purple-800">
-                      {currentSprint ? currentSprint.name : "Backlog"}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setEditingSprint(true)}
-                  className="p-2 rounded-lg bg-purple-200 hover:bg-purple-300 text-purple-700 transition-colors opacity-0 group-hover:opacity-100"
-                  title="Change sprint assignment"
-                >
-                  <Edit3 size={16} />
-                </button>
-              </div>
-            )}
+            <CustomDropdown
+              options={sprintOptions.map(opt => opt.label)}
+              selected={sprintId 
+                ? sprintOptions.find(opt => opt.value === sprintId)?.label || ""
+                : "Backlog"
+              }
+              setSelected={(label) => {
+                const option = sprintOptions.find(opt => opt.label === label);
+                setSprintId(option?.value || "");
+              }}
+              placeholder="Select sprint"
+              className="w-full"
+            />
           </div>
 
           {/* Assignment and Due Date */}
@@ -1211,39 +941,104 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                   "Unassigned",
                   ...collaborators.map((c: Collaborator) => c.name),
                 ]}
-                selected={assignedTo}
-                setSelected={(val) => {
-                  setAssignedTo(val);
-                  setUnsavedChanges(true);
-                }}
+                selected={assignedTo || "Unassigned"}
+                setSelected={(val) => setAssignedTo(val)}
                 placeholder="Assign to..."
-                className="w-full py-4"
+                className="w-full"
               />
             </div>
 
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <div className="p-2 rounded-lg bg-violet-100">
-                  <Calendar size={18} className="text-purple-600" />
-                </div>
-                <h3 className="font-semibold text-slate-800">Due Date</h3>
+              <div className="p-2 rounded-lg bg-violet-100">
+                <Calendar size={18} className="text-purple-600" />
+              </div>
+              <h3 className="font-semibold text-slate-800">Due Date</h3>
               </div>
               <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => {
-                  setDueDate(e.target.value);
-                  setUnsavedChanges(true);
-                }}
-                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-all duration-200"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full px-3 py-2 border-2 border-slate-200 rounded-xl focus:border-purple-500 focus:outline-none transition-all duration-200 text-sm"
               />
             </div>
           </div>
 
-          {/* Rest of the content remains the same - Child Tasks, Tags, Files, Activity History, Comments sections */}
-          {/* ... (keeping the rest of the component exactly as it was) ... */}
+          {/* Epics Section */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-purple-100">
+                <Crown size={18} className="text-purple-600" />
+              </div>
+              <h3 className="font-semibold text-slate-800">Epic Relations</h3>
+            </div>
 
-          {/* Child Tasks */}
+            {/* Selected Epic Tasks */}
+            {epics.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {epics.map((epicName) => (
+                  <span
+                    key={epicName}
+                    className="flex items-center gap-2 text-sm text-purple-700 bg-purple-100 border border-purple-200 rounded-full px-3 py-1"
+                  >
+                    {epicName}
+                    <button
+                      onClick={() => handleRemoveEpic(epicName)}
+                      className="hover:bg-purple-200 rounded-full p-1 transition-colors"
+                      title="Remove epic relation"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Epic Tasks Dropdown - Multi-select for epic-type tasks */}
+            {epicTasks.length > 0 && (
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 mb-3">
+                <p className="text-xs font-medium text-purple-600 mb-3">Select epic tasks to relate:</p>
+                <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-100">
+                  {epicTasks.map((epicTask) => (
+                    <label key={epicTask.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-purple-100 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={epics.includes(epicTask.title)}
+                        onChange={(e) => {
+                          if (e.target.checked && epics.length < 3) {
+                            setEpics(prev => [...prev, epicTask.title]);
+                          } else if (!e.target.checked) {
+                            setEpics(prev => prev.filter(name => name !== epicTask.title));
+                          }
+                        }}
+                        className="w-4 h-4 text-purple-600 border-purple-300 rounded focus:ring-purple-500"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-slate-700">{epicTask.title}</span>
+                        {epicTask.description && (
+                          <p className="text-xs text-slate-500 truncate">{epicTask.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {epicTasks.length === 0 && (
+              <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 text-center">
+                <p className="text-xs text-purple-600">No epics on this board.</p>
+              </div>
+            )}
+
+            {/* Info Text */}
+            <p className="text-xs text-purple-600 mt-2">
+              {epics.length}/3 epic relations (connect tasks to epic-type tasks)
+            </p>
+
+          </div>
+
+          {/* Child Tasks Section */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -1343,7 +1138,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                         })
                       }
                       className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none transition-colors"
-                      min={new Date().toISOString().split("T")[0]} // Prevents selecting past dates
                     />
                   </div>
                   <textarea
@@ -1394,7 +1188,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                     className="bg-slate-50 rounded-xl border border-slate-200 p-4 hover:bg-slate-100 transition-colors"
                   >
                     {editingChildTask === childTask.id ? (
-                      // Edit mode (keep existing edit form)
+                      // Edit mode
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <input
@@ -1409,39 +1203,35 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                             placeholder="Task title"
                             className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none transition-colors"
                           />
-                          <div className="relative z-30">
-                            <CustomDropdown
-                              options={["Low", "Medium", "High"]}
-                              selected={editChildTaskData.priority}
-                              setSelected={(val) =>
-                                setEditChildTaskData({
-                                  ...editChildTaskData,
-                                  priority: val as "Low" | "Medium" | "High",
-                                })
-                              }
-                              placeholder="Priority"
-                              className="w-full"
-                            />
-                          </div>
+                          <CustomDropdown
+                            options={["Low", "Medium", "High"]}
+                            selected={editChildTaskData.priority}
+                            setSelected={(val) =>
+                              setEditChildTaskData({
+                                ...editChildTaskData,
+                                priority: val as "Low" | "Medium" | "High",
+                              })
+                            }
+                            placeholder="Priority"
+                            className="w-full"
+                          />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="relative z-30">
-                            <CustomDropdown
-                              options={[
-                                "Unassigned",
-                                ...collaborators.map((c: Collaborator) => c.name),
-                              ]}
-                              selected={editChildTaskData.assignedTo}
-                              setSelected={(val) =>
-                                setEditChildTaskData({
-                                  ...editChildTaskData,
-                                  assignedTo: val,
-                                })
-                              }
-                              placeholder="Assign to"
-                              className="w-full"
-                            />
-                          </div>
+                          <CustomDropdown
+                            options={[
+                              "Unassigned",
+                              ...collaborators.map((c: Collaborator) => c.name),
+                            ]}
+                            selected={editChildTaskData.assignedTo}
+                            setSelected={(val) =>
+                              setEditChildTaskData({
+                                ...editChildTaskData,
+                                assignedTo: val,
+                              })
+                            }
+                            placeholder="Assign to"
+                            className="w-full"
+                          />
                           <input
                             type="date"
                             value={editChildTaskData.dueDate}
@@ -1452,7 +1242,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                               })
                             }
                             className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 focus:border-blue-500 focus:outline-none transition-colors"
-                            min={new Date().toISOString().split("T")[0]}
                           />
                         </div>
                         <textarea
@@ -1484,7 +1273,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                         </div>
                       </div>
                     ) : (
-                      // Enhanced View mode with detailed information including description
+                      // View mode
                       <div className="flex items-start gap-3">
                         <button
                           onClick={() =>
@@ -1502,8 +1291,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                           )}
                         </button>
                         <div className="flex-1">
-                          {/* Title and Priority Row */}
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center justify-between mb-2">
                             <h4
                               className={`font-semibold text-lg ${
                                 childTask.status === "done"
@@ -1514,19 +1302,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                               {childTask.title}
                             </h4>
                             <div className="flex items-center gap-2">
-                              {childTask.priority && (
-                                <span
-                                  className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                    childTask.priority === "High"
-                                      ? "bg-red-100 text-red-700 border border-red-200"
-                                      : childTask.priority === "Medium"
-                                      ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
-                                      : "bg-green-100 text-green-700 border border-green-200"
-                                  }`}
-                                >
-                                  {childTask.priority} Priority
-                                </span>
-                              )}
                               <button
                                 onClick={() => handleEditChildTask(childTask)}
                                 className="text-blue-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-all"
@@ -1540,11 +1315,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                                     `Are you sure you want to delete the subtask "${childTask.title}"? This action cannot be undone.`
                                   );
                                   setConfirmAction(
-                                    () => () =>
-                                      handleDeleteChildTask(
-                                        childTask.id,
-                                        childTask.title
-                                      )
+                                    () => () => handleDeleteChildTask(childTask.id)
                                   );
                                 }}
                                 className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
@@ -1554,138 +1325,20 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                               </button>
                             </div>
                           </div>
-
-                          {/* Enhanced Description Display */}
-                          {childTask.description &&
-                            childTask.description.trim() && (
-                              <div className="mb-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <FileText
-                                    size={14}
-                                    className="text-slate-500"
-                                  />
-                                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                                    Description
-                                  </span>
-                                </div>
-                                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                                    {childTask.description}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                          {/* Enhanced Assignment and Due Date Info */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                            {/* Assignment Info */}
-                            <div className="flex items-center gap-2 p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
-                              <div className="p-2 rounded-lg bg-blue-100">
-                                <User size={14} className="text-blue-600" />
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                                  Assigned To
-                                </p>
-                                <p
-                                  className={`text-sm font-semibold ${
-                                    !childTask.assignedTo ||
-                                    childTask.assignedTo === "Unassigned"
-                                      ? "text-slate-400 italic"
-                                      : "text-slate-700"
-                                  }`}
-                                >
-                                  {childTask.assignedTo || "Unassigned"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Due Date Info */}
-                            <div className="flex items-center gap-2 p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
-                              <div
-                                className={`p-2 rounded-lg ${
-                                  childTask.dueDate &&
-                                  new Date(childTask.dueDate) < new Date() &&
-                                  childTask.status !== "done"
-                                    ? "bg-red-100"
-                                    : "bg-violet-100"
-                                }`}
-                              >
-                                <Calendar
-                                  size={14}
-                                  className={
-                                    childTask.dueDate &&
-                                    new Date(childTask.dueDate) < new Date() &&
-                                    childTask.status !== "done"
-                                      ? "text-red-600"
-                                      : "text-purple-600"
-                                  }
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                                  Due Date
-                                </p>
-                                <p
-                                  className={`text-sm font-semibold ${
-                                    !childTask.dueDate
-                                      ? "text-slate-400 italic"
-                                      : childTask.dueDate &&
-                                        new Date(childTask.dueDate) <
-                                          new Date() &&
-                                        childTask.status !== "done"
-                                      ? "text-red-700"
-                                      : "text-slate-700"
-                                  }`}
-                                >
-                                  {childTask.dueDate
-                                    ? new Date(
-                                        childTask.dueDate
-                                      ).toLocaleDateString("en-US", {
-                                        weekday: "short",
-                                        year: "numeric",
-                                        month: "short",
-                                        day: "numeric",
-                                      })
-                                    : "No due date"}
-                                  {childTask.dueDate &&
-                                    new Date(childTask.dueDate) < new Date() &&
-                                    childTask.status !== "done" && (
-                                      <span className="ml-2 text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                                        Overdue
-                                      </span>
-                                    )}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Status and Creation Info */}
-                          <div className="flex items-center justify-between text-xs text-slate-500 bg-white p-2 rounded-lg border border-slate-200">
-                            <div className="flex items-center gap-4">
-                              <span
-                                className={`px-2 py-1 rounded-full font-medium ${
-                                  childTask.status === "done"
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-blue-100 text-blue-700"
-                                }`}
-                              >
-                                {childTask.status === "done"
-                                  ? "Completed"
-                                  : "In Progress"}
-                              </span>
-                              <span>
-                                Created by{" "}
-                                {childTask.createdBy?.name ||
-                                  childTask.createdBy?.email ||
-                                  "Unknown"}
-                              </span>
-                            </div>
+                          {childTask.description && (
+                            <p className="text-sm text-slate-600 mb-2">
+                              {childTask.description}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-4 text-xs text-slate-500">
                             <span>
-                              {childTask.createdAt
-                                ?.toDate?.()
-                                ?.toLocaleDateString?.() || "Unknown date"}
+                              {childTask.assignedTo ? childTask.assignedTo.name : "Unassigned"}
                             </span>
+                            {childTask.dueDate && (
+                              <span>
+                                Due: {new Date(childTask.dueDate).toLocaleDateString()}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1704,66 +1357,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                 <Plus size={20} />
                 Add Subtasks
               </button>
-            )}
-          </div>
-
-          {/* Tags */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-orange-100">
-                  <Tag size={18} className="text-orange-600" />
-                </div>
-                <h3 className="font-semibold text-slate-800">Tags</h3>
-              </div>
-              <button
-                onClick={() => setShowTagInput(!showTagInput)}
-                className="p-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-              >
-                {showTagInput ? <X size={16} /> : <Plus size={16} />}
-              </button>
-            </div>
-
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2 shadow-md"
-                  >
-                    #{tag}
-                    <button
-                      onClick={() => {
-                        setTags(tags.filter((_, i) => i !== index));
-                        setUnsavedChanges(true);
-                      }}
-                      className="hover:bg-white/20 rounded-full p-1 transition-colors"
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {showTagInput && (
-              <input
-                type="text"
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newTag.trim()) {
-                    setTags([...tags, newTag.trim()]);
-                    setNewTag("");
-                    setShowTagInput(false);
-                    setUnsavedChanges(true);
-                    e.preventDefault();
-                  }
-                }}
-                placeholder="Type tag and press Enter"
-                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all duration-200"
-                autoFocus
-              />
             )}
           </div>
 
@@ -1817,7 +1410,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                           const updatedFiles = [...files];
                           updatedFiles.splice(index, 1);
                           setFiles(updatedFiles);
-                          setUnsavedChanges(true);
                         }}
                         className="hover:bg-green-200 rounded-full p-1 transition-colors"
                       >
@@ -1850,7 +1442,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                     ? selectedFiles
                     : [selectedFiles]),
                 ]);
-                setUnsavedChanges(true);
               }}
             />
           </div>
@@ -1874,7 +1465,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                           {log.desc}
                         </p>
                         <div className="text-xs text-slate-500 mt-1">
-                          {log.user || "System"} â€¢{" "}
+                          {log.user || "System"} • {" "}
                           {log.timestamp?.toDate?.()?.toLocaleString?.() || ""}
                         </div>
                       </div>
@@ -1890,7 +1481,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
           </div>
 
           {/* Comments */}
-          {/* Enhanced Comments Section with Date and Time */}
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <div className="p-2 rounded-lg bg-blue-100">
@@ -1933,7 +1523,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                     </div>
                   ) : (
                     <>
-                      {/* Comment Header with User Avatar */}
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
                           <span className="text-white text-xs font-bold">
@@ -1947,32 +1536,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                                 {comment.user}
                               </p>
                               <p className="text-xs text-slate-500">
-                                {comment.timestamp?.toDate?.() ? (
-                                  <>
-                                    {comment.timestamp
-                                      .toDate()
-                                      .toLocaleDateString("en-US", {
-                                        weekday: "short",
-                                        year: "numeric",
-                                        month: "short",
-                                        day: "numeric",
-                                      })}{" "}
-                                    at{" "}
-                                    {comment.timestamp
-                                      .toDate()
-                                      .toLocaleTimeString("en-US", {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                        hour12: true,
-                                      })}
-                                    {comment.edited && (
-                                      <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                                        Edited
-                                      </span>
-                                    )}
-                                  </>
-                                ) : (
-                                  "Unknown time"
+                                {comment.timestamp?.toDate?.()?.toLocaleString() || "Unknown time"}
+                                {comment.edited && (
+                                  <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                                    Edited
+                                  </span>
                                 )}
                               </p>
                             </div>
@@ -1999,7 +1567,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
                         </div>
                       </div>
 
-                      {/* Comment Content */}
                       <div className="ml-11">
                         <p className="text-sm text-slate-700 leading-relaxed bg-white p-3 rounded-lg border border-slate-200">
                           {comment.text}
@@ -2113,6 +1680,17 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [] }) =>
         <ErrorModal
           message={errorMessage}
           onClose={() => setErrorMessage("")}
+        />
+      )}
+      {showWarning && (
+        <ConfirmModal
+          message="You have unsaved changes. Are you sure you want to close without saving?"
+          onConfirm={() => {
+            setShowWarning(false);
+            setIsVisible(false);
+            setTimeout(() => onClose(), 200);
+          }}
+          onCancel={() => setShowWarning(false)}
         />
       )}
     </div>

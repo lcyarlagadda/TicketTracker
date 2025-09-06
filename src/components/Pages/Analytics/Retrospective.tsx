@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, X, Trash2, Users, Calendar, CheckCircle, AlertCircle, Target, ThumbsUp, ThumbsDown, Settings, MessageCircle, Send, AtSign, Hash } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../hooks/redux';
+import { notificationService } from '../../../services/notificationService';
 import { updateBoard } from '../../../store/slices/boardSlice';
 import { Task, Board, Collaborator, Sprint, EnhancedRetroItem, NewItemForm, SprintRetroData, RetroComment, MentionTask, MentionUser } from '../../../store/types/types';
 import { useParams } from 'react-router-dom';
@@ -569,6 +570,17 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     }));
   }, [tasks]);
 
+  // Helper function to extract mentions from text
+  const extractMentions = (text: string): MentionUser[] => {
+    const mentionMatches = text.match(/@(\w+)/g);
+    if (!mentionMatches) return [];
+    
+    return mentionMatches
+      .map(match => match.slice(1)) // Remove @ symbol
+      .map(username => mentionUsers.find(user => user.name === username))
+      .filter((user): user is MentionUser => user !== undefined);
+  };
+
   // Fetch sprint data
   useEffect(() => {
     const fetchSprintData = async () => {
@@ -600,7 +612,12 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.status === 'Done' || t.status === 'done').length;
     const getTaskPoints = (task: Task): number => {
-      return task.points || 0;
+      // Use explicit story points if available
+      if (task.points !== null && task.points !== undefined) {
+        return task.points;
+      }
+      // Fallback to priority-based points
+      return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
     };
     
     const totalPoints = tasks.reduce((sum, t) => sum + getTaskPoints(t), 0);
@@ -615,9 +632,9 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
       completedPoints,
       completionRate: totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) : '0',
       velocity: completedPoints,
-      teamSize: board.collaborators.length
+      teamSize: (sprint?.status === 'active' || sprint?.status === 'planning') ? board.collaborators.length : (sprint?.teamSize || board.collaborators.length)
     };
-  }, [tasks, board.collaborators]);
+  }, [tasks, board.collaborators, sprint]);
 
   // Auto-save retro data
   const saveRetroData = async (): Promise<void> => {
@@ -694,6 +711,28 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     setRetroItems([...retroItems, item]);
     setNewItem({ type: 'went-well', content: '', assignedTo: '', dueDate: '', priority: 'Medium' });
     setShowAddForm({ ...showAddForm, [type]: false });
+
+    // Send notifications for mentions
+    const mentionedUsers = extractMentions(newItem.content.trim());
+    if (mentionedUsers.length > 0) {
+      mentionedUsers.forEach(async (mentionedUser) => {
+        try {
+          const boardUrl = `${window.location.origin}/board/${board.id}`;
+          await notificationService.notifyMentioned({
+            mentionedEmail: mentionedUser.email,
+            mentionedName: mentionedUser.name,
+            mentionedBy: user.displayName || user.email || 'Unknown User',
+            boardName: board.name,
+            context: 'retrospective',
+            message: `${user.displayName || user.email} mentioned you in a retrospective item: "${newItem.content.trim()}"`,
+            boardUrl,
+          });
+          console.log('Retrospective mention notification sent successfully');
+        } catch (notificationError) {
+          console.error('Failed to send retrospective mention notification:', notificationError);
+        }
+      });
+    }
   };
 
   const handleVote = (itemId: number): void => {
@@ -740,6 +779,28 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     ));
 
     setCommentTexts({ ...commentTexts, [itemId]: '' });
+
+    // Send notifications for mentions in comments
+    const mentionedUsers = extractMentions(commentText);
+    if (mentionedUsers.length > 0) {
+      mentionedUsers.forEach(async (mentionedUser) => {
+        try {
+          const boardUrl = `${window.location.origin}/board/${board.id}`;
+          await notificationService.notifyMentioned({
+            mentionedEmail: mentionedUser.email,
+            mentionedName: mentionedUser.name,
+            mentionedBy: user.displayName || user.email || 'Unknown User',
+            boardName: board.title,
+            context: 'retrospective',
+            message: `${user.displayName || user.email} mentioned you in a retrospective comment: "${commentText}"`,
+            boardUrl,
+          });
+          console.log('Retrospective comment mention notification sent successfully');
+        } catch (notificationError) {
+          console.error('Failed to send retrospective comment mention notification:', notificationError);
+        }
+      });
+    }
   };
 
   const handleLikeComment = (itemId: number, commentId: string): void => {
@@ -860,20 +921,6 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
           <div>
             <h2 className="text-2xl font-bold text-slate-800">{sprint.name} Retrospective</h2>
             <p className="text-slate-600 mt-1">Reflect on what happened and plan improvements for the next sprint</p>
-            <div className="mt-2 text-sm text-slate-500">
-              Facilitator: {user?.displayName || 'You'} •
-              Last updated: {retroItems.length > 0 ? 'Recently' : 'Never'}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <div className={`w-2 h-2 rounded-full ${
-              saveStatus === 'saving' ? 'bg-yellow-500 animate-pulse' :
-              saveStatus === 'saved' ? 'bg-green-500' : 'bg-red-500'
-            }`}></div>
-            <span className="text-slate-600">
-              {saveStatus === 'saving' ? 'Saving...' :
-               saveStatus === 'saved' ? 'Saved' : 'Error saving'}
-            </span>
           </div>
         </div>
 
@@ -898,22 +945,6 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
           <div className="text-center bg-orange-50 rounded-lg p-3">
             <div className="text-xl font-bold text-orange-600">{sprintSummary.teamSize}</div>
             <div className="text-sm text-slate-600">Team Size</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Mention Helper */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200 p-4">
-        <div className="flex items-start gap-4">
-          <div className="flex gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <AtSign size={16} className="text-blue-600" />
-              <span className="text-slate-700">Type <code className="bg-white px-1 rounded">@username</code> to mention team members</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Hash size={16} className="text-green-600" />
-              <span className="text-slate-700">Type <code className="bg-white px-1 rounded">#task</code> to reference tasks (clickable)</span>
-            </div>
           </div>
         </div>
       </div>
@@ -1192,6 +1223,7 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
             setSelectedTask(null);
             setShowTaskModal(false);
           }}
+          existingTasks={tasks}
         />
       )}
     </div>

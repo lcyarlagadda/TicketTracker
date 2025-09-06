@@ -1,10 +1,9 @@
 // App.tsx - Updated with Sprint Analytics Routes
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { store } from './store';
-import { useAppSelector } from './hooks/redux';
-import { authService } from './services/authService';
+import { useAuth } from './hooks/useAuth';
 import Auth from './components/Authentication/Auth';
 import Header from './components/Header';
 import BoardList from './components/Pages/BoardList';
@@ -17,7 +16,19 @@ interface PrivateRouteProps {
 }
 
 function PrivateRoute({ children }: PrivateRouteProps) {
-  const { user } = useAppSelector(state => state.auth);
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
   return user ? <>{children}</> : <Navigate to="/" />;
 }
 
@@ -54,12 +65,7 @@ function SprintAnalyticsWrapper() {
 }
 
 function AppContent() {
-  const { user, loading } = useAppSelector(state => state.auth);
-
-  useEffect(() => {
-    authService.initializeAuthListener();
-    return () => authService.cleanup();
-  }, []);
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (

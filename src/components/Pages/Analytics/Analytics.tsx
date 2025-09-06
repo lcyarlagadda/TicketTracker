@@ -32,6 +32,7 @@ import {
   Zap,
   AlertTriangle,
   CheckCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   Task,
@@ -60,23 +61,27 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     | "cycle-time"
     | "completion-trends"
   >("velocity");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Get task points
   const getTaskPoints = (task: Task): number => {
-    if ((task as any).points) return (task as any).points;
+    // Use explicit story points if available
+    if (task.points !== null && task.points !== undefined) {
+      return task.points;
+    }
+    // Fallback to priority-based points
     return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
   };
 
   // Calculate contributor metrics with enhanced data
   const contributorMetrics = useMemo((): ContributorMetrics[] => {
-    const contributors = [
-      ...new Set(tasks.map((t) => t.assignedTo).filter(Boolean)),
-    ];
+    // Use all board collaborators instead of just task assignees
+    const contributors = board.collaborators.map(collab => collab.name);
 
     return contributors
       .map((contributor) => {
         const contributorTasks = tasks.filter(
-          (t) => t.assignedTo === contributor
+          (t) => t.assignedTo?.name === contributor
         );
         const completedTasks = contributorTasks.filter(
           (t) => t.status === "Done" || t.status === "done"
@@ -176,7 +181,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         };
       })
       .sort((a, b) => b.pointsCompleted - a.pointsCompleted);
-  }, [tasks, timeRange]);
+  }, [tasks, timeRange, refreshKey]);
 
   // Enhanced velocity data with predictions
   const velocityData = useMemo((): EnhancedVelocityData[] => {
@@ -224,7 +229,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange, contributorMetrics]);
+  }, [tasks, timeRange, contributorMetrics, refreshKey]);
 
   // Cycle time distribution data
   const cycleTimeData = useMemo(() => {
@@ -272,7 +277,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       count,
       percentage: Math.round((count / completedTasks.length) * 100),
     }));
-  }, [tasks]);
+  }, [tasks, refreshKey]);
 
   // Task completion trends
   const completionTrendsData = useMemo(() => {
@@ -317,7 +322,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange]);
+  }, [tasks, timeRange, refreshKey]);
 
   // Current sprint tasks
   const currentSprintTasks = useMemo(() => {
@@ -599,6 +604,14 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setRefreshKey(prev => prev + 1)}
+              className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+              title="Refresh analytics data"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
             {(["7d", "30d", "90d"] as const).map((range) => (
               <button
                 key={range}
@@ -837,6 +850,71 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
               </>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Team Members Section */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Users size={20} className="text-blue-600" />
+          <h3 className="text-lg font-semibold text-slate-800">
+            Team Members ({board.collaborators.length})
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {board.collaborators.map((collaborator, index) => {
+            const contributorData = contributorMetrics.find(c => c.name === collaborator.name);
+            const hasTasks = contributorData && contributorData.taskCount > 0;
+            
+            return (
+              <div
+                key={collaborator.email}
+                className={`p-4 rounded-lg border-2 ${
+                  hasTasks 
+                    ? 'bg-green-50 border-green-200' 
+                    : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                      hasTasks ? 'bg-green-600' : 'bg-slate-400'
+                    }`}
+                  >
+                    {collaborator.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-medium text-slate-800">
+                      {collaborator.name}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {collaborator.email}
+                    </div>
+                  </div>
+                </div>
+                {hasTasks ? (
+                  <div className="text-sm text-slate-600">
+                    <div className="flex justify-between">
+                      <span>Tasks:</span>
+                      <span className="font-medium">{contributorData?.taskCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Points:</span>
+                      <span className="font-medium">{contributorData?.pointsCompleted}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Velocity:</span>
+                      <span className="font-medium">{contributorData?.velocity} pts/week</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 italic">
+                    No tasks assigned
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

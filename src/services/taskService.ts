@@ -4,10 +4,10 @@ import {
   doc,
   addDoc,
   getDocs,
+  getDoc,
   updateDoc,
   deleteDoc,
   query,
-  orderBy,
   where,
   onSnapshot,
   serverTimestamp,
@@ -22,9 +22,15 @@ class TaskService {
   // Fetch all tasks for a board
   async fetchBoardTasks(userId: string, boardId: string): Promise<Task[]> {
     try {
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
       const tasksQuery = query(
-        collection(db, 'users', userId, 'boards', boardId, 'tasks'),
-        orderBy('createdAt', 'asc')
+        collection(db, 'tasks'),
+        where('boardId', '==', boardId)
       );
       const snapshot = await getDocs(tasksQuery);
       return snapshot.docs.map(doc => ({ 
@@ -41,10 +47,16 @@ class TaskService {
   // Fetch child tasks for a parent task
   async fetchChildTasks(userId: string, boardId: string, parentTaskId: string): Promise<Task[]> {
     try {
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
       const childTasksQuery = query(
-        collection(db, 'users', userId, 'boards', boardId, 'tasks'),
-        where('parentTaskId', '==', parentTaskId),
-        orderBy('createdAt', 'asc')
+        collection(db, 'tasks'),
+        where('boardId', '==', boardId),
+        where('parentTaskId', '==', parentTaskId)
       );
       const snapshot = await getDocs(childTasksQuery);
       return snapshot.docs.map(doc => ({ 
@@ -65,8 +77,8 @@ class TaskService {
     callback: (tasks: Task[]) => void
   ): Unsubscribe {
     const tasksQuery = query(
-      collection(db, 'users', userId, 'boards', boardId, 'tasks'),
-      orderBy('createdAt', 'asc')
+      collection(db, 'tasks'),
+      where('boardId', '==', boardId)
     );
     
     return onSnapshot(tasksQuery, (snapshot) => {
@@ -87,7 +99,8 @@ class TaskService {
     callback: (tasks: Task[]) => void
   ): Unsubscribe {
     const childTasksQuery = query(
-      collection(db, 'users', userId, 'boards', boardId, 'tasks'),
+      collection(db, 'tasks'),
+      where('boardId', '==', boardId),
       where('parentTaskId', '==', parentTaskId)
     );
     
@@ -108,8 +121,15 @@ class TaskService {
     taskData: Omit<Task, 'id' | 'boardId'>
   ): Promise<Task> {
     try {
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
       const newTask = {
         ...taskData,
+        boardId,
         createdAt: serverTimestamp(),
         progressLog: [
           {
@@ -122,12 +142,14 @@ class TaskService {
         ],
       };
 
+      console.log("Creating task with data:", newTask);
+
       const docRef = await addDoc(
-        collection(db, 'users', userId, 'boards', boardId, 'tasks'),
+        collection(db, 'tasks'),
         newTask
       );
 
-      return { id: docRef.id, boardId, ...newTask } as Task;
+      return { id: docRef.id, ...newTask } as Task;
     } catch (error) {
       console.error('Error creating task:', error);
       throw error;
@@ -142,7 +164,13 @@ class TaskService {
     updates: Partial<Task>
   ): Promise<void> {
     try {
-      const taskRef = doc(db, 'users', userId, 'boards', boardId, 'tasks', taskId);
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
+      const taskRef = doc(db, 'tasks', taskId);
       await updateDoc(taskRef, updates);
     } catch (error) {
       console.error('Error updating task:', error);
@@ -153,7 +181,13 @@ class TaskService {
   // Delete task
   async deleteTask(userId: string, boardId: string, taskId: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, 'users', userId, 'boards', boardId, 'tasks', taskId));
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
+      await deleteDoc(doc(db, 'tasks', taskId));
     } catch (error) {
       console.error('Error deleting task:', error);
       throw error;

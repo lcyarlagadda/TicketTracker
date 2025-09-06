@@ -9,6 +9,7 @@ interface CustomDropdownProps {
   placeholder?: string;
   className?: string;
   getDisplayValue?: (value: string) => string;
+  disabled?: boolean;
 }
 
 const CustomDropdown: React.FC<CustomDropdownProps> = ({

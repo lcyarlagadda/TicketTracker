@@ -3,11 +3,30 @@ export interface User {
   uid: string;
   email: string;
   displayName?: string | null;
+  emailVerified?: boolean;
 }
+
+export type BoardRole = 'admin' | 'manager' | 'user';
 
 export interface Collaborator {
   name: string;
   email: string;
+  role: BoardRole;
+}
+
+export interface BoardPermissions {
+  canManageColumns: boolean;
+  canManageCollaborators: boolean;
+  canManageSprints: boolean;
+  canGiveManagerReviews: boolean;
+  canDeleteBoard: boolean;
+  canEditBoardSettings: boolean;
+}
+
+export interface UserBoardRole {
+  userId: string;
+  role: BoardRole;
+  permissions: BoardPermissions;
 }
 
 export interface Board {
@@ -38,8 +57,8 @@ export interface Board {
 export interface ProgressLogEntry {
   desc: string;
   type: 'created' | 'status-change' | 'assignment-change' | 'description-change' | 'points-change' |
-        'dueDate-change' | 'tags-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
-        'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed' | 'sprint-change';
+        'dueDate-change' | 'epics-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
+        'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed' | 'sprint-change'| 'type-change';
   to?: string;
   timestamp: any;
   user: string;
@@ -49,6 +68,7 @@ export interface ProgressLogEntry {
 
 export interface Sprint {
   id: string;
+  boardId: string;
   sprintNumber: number;
   name: string;
   goals: string[];
@@ -63,7 +83,6 @@ export interface Sprint {
   startDate: string;
   endDate: string;
   status: 'planning' | 'active' | 'completed' | 'cancelled';
-  boardId: string;
   createdAt: any;
   createdBy: {
     uid: string;
@@ -164,8 +183,12 @@ export interface Task {
   priority: 'Low' | 'Medium' | 'High';
   dueDate: string;
   status: string;
-  tags: string[];
-  assignedTo: string;
+  epics: string[];
+  assignedTo: {
+    uid: string;
+    email: string;
+    name: string;
+  } | null;
   createdAt: any;
   createdBy: {
     uid: string;
@@ -180,8 +203,10 @@ export interface Task {
   points: number | null;
   sprintId?: string;
   sprintName?: string;
-  type: 'epic' | 'story' | 'bug' | 'subtask';
+  type: TaskType;
 }
+
+export type TaskType =  'epic' | 'feature' | 'story' | 'bug' | 'enhancement' | 'subtask' | 'poc';
 
 export interface CalendarTask extends Task {
   isSubtask?: boolean;
@@ -470,6 +495,25 @@ export interface SprintReflectionData {
   lastUpdated: string;
 }
 
+// Private reflection data structure for user-manager conversations
+export interface PrivateReflectionData {
+  sprintId: string;
+  sprintNumber: number;
+  userId: string; // The user this reflection belongs to
+  userEmail: string;
+  userName: string;
+  managerId?: string; // The manager reviewing this reflection
+  managerEmail?: string;
+  managerName?: string;
+  personalGrowth: EnhancedReflectionItem[];
+  teamInsights: EnhancedReflectionItem[];
+  lessonsLearned: EnhancedReflectionItem[];
+  futureGoals: EnhancedReflectionItem[];
+  managerFeedback: EnhancedReflectionItem[]; // Manager's feedback on the reflection
+  lastUpdated: string;
+  isPrivate: boolean; // Always true for private reflections
+}
+
 export interface NewReflectionForm {
   content: string;
   category: string;
@@ -478,7 +522,7 @@ export interface NewReflectionForm {
   rating: number;
 }
 
-export type TabKey = 'personal' | 'team' | 'lessons' | 'goals';
+export type TabKey = 'personal' | 'team' | 'lessons' | 'goals' | 'feedback';
 
 export interface TabConfig {
   key: TabKey;
@@ -559,6 +603,7 @@ export interface TeamHealthMetrics {
 export interface EnhancedBoard extends Board {
   [key: `sprintRetro_${string}`]: SprintRetroData;
   [key: `sprintReflection_${string}`]: SprintReflectionData;
+  [key: `privateReflection_${string}_${string}`]: PrivateReflectionData; // privateReflection_sprintId_userId
 }
 
 // Props for enhanced components
@@ -652,7 +697,7 @@ export const PRIORITY_POINTS = {
 
 // Cycle time buckets for analytics
 export const CYCLE_TIME_BUCKETS = [
-  '≤1 day',
+  'â‰¤1 day',
   '2-3 days', 
   '4-7 days',
   '1-2 weeks',

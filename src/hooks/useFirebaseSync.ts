@@ -16,12 +16,12 @@ export const useBoardsSync = () => {
     if (!user) return;
 
     // Initial fetch
-    dispatch(fetchBoards(user.uid));
+    dispatch(fetchBoards({ userId: user.uid, userEmail: user.email }));
 
     // Real-time subscription
     const unsubscribe = boardService.subscribeToBoards(user.uid, (boards) => {
       // Only update if different from current state to prevent unnecessary re-renders
-      dispatch(fetchBoards.fulfilled(boards, '', user.uid));
+      dispatch(fetchBoards.fulfilled(boards, '', { userId: user.uid, userEmail: user.email }));
     });
 
     return () => unsubscribe();

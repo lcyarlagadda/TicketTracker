@@ -71,8 +71,8 @@ const BoardList: React.FC = () => {
 
   // Calculate user stats for Task Overview
   const myTasks = allTasks.filter(task => 
-    task.assignedTo === user?.displayName || 
-    task.assignedTo === user?.email ||
+    task.assignedTo?.name === user?.displayName || 
+    task.assignedTo?.email === user?.email ||
     (task.createdBy && (task.createdBy.email === user?.email || task.createdBy.uid === user?.uid))
   ).length;
 
@@ -227,6 +227,7 @@ const BoardList: React.FC = () => {
         <TaskModal
           task={selectedTask}
           onClose={() => dispatch(setSelectedTask(null))}
+          existingTasks={allTasks}
         />
       )}
       

@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Filter, UserCheck, Tag, Zap } from "lucide-react";
+import { Search, Filter, UserCheck, Crown, Zap } from "lucide-react";
 
 interface FilterSectionProps {
   searchTerm: string;
@@ -8,12 +8,12 @@ interface FilterSectionProps {
   setShowFilters: (value: boolean) => void;
   selectedAssignees: string[];
   setSelectedAssignees: (value: string[]) => void;
-  selectedTags: string[];
-  setSelectedTags: (value: string[]) => void;
+  selectedEpics: string[];
+  setSelectedEpics: (value: string[]) => void;
   selectedSprints: string[];
   setSelectedSprints: (value: string[]) => void;
   uniqueAssignees: string[];
-  uniqueTags: string[];
+  uniqueEpics: string[];
   uniqueSprints: string[];
   hasActiveFilters: boolean;
   clearFilters: () => void;
@@ -26,12 +26,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({
   setShowFilters,
   selectedAssignees,
   setSelectedAssignees,
-  selectedTags,
-  setSelectedTags,
+  selectedEpics,
+  setSelectedEpics,
   selectedSprints,
   setSelectedSprints,
   uniqueAssignees,
-  uniqueTags,
+  uniqueEpics,
   uniqueSprints,
   hasActiveFilters,
   clearFilters,
@@ -64,7 +64,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
             Filters
             {hasActiveFilters && (
               <span className="bg-white text-blue-600 text-xs px-2 py-1 rounded-full font-bold">
-                {(searchTerm ? 1 : 0) + selectedAssignees.length + selectedTags.length + selectedSprints.length}
+                {(searchTerm ? 1 : 0) + selectedAssignees.length + selectedEpics.length + selectedSprints.length}
               </span>
             )}
           </button>
@@ -88,6 +88,25 @@ const FilterSection: React.FC<FilterSectionProps> = ({
                 Assigned To
               </label>
               <div className="space-y-2 max-h-32 overflow-y-auto">
+                {/* Unassigned filter option */}
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedAssignees.includes('Unassigned')}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedAssignees([...selectedAssignees, 'Unassigned']);
+                      } else {
+                        setSelectedAssignees(selectedAssignees.filter(a => a !== 'Unassigned'));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-slate-600 px-2 py-1 bg-gray-100 rounded-lg text-xs border border-gray-200">
+                    Unassigned
+                  </span>
+                </label>
+                
                 {uniqueAssignees.map(assignee => (
                   <label key={assignee} className="flex items-center gap-2 text-sm">
                     <input
@@ -111,34 +130,34 @@ const FilterSection: React.FC<FilterSectionProps> = ({
               </div>
             </div>
 
-            {/* Tags Filter */}
+            {/* Epic Filter */}
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                <Tag size={16} />
-                Tags
+                <Crown size={16} />
+                Epics
               </label>
               <div className="space-y-2 max-h-32 overflow-y-auto">
-                {uniqueTags.map(tag => (
-                  <label key={tag} className="flex items-center gap-2 text-sm">
+                {uniqueEpics.map(epic => (
+                  <label key={epic} className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
-                      checked={selectedTags.includes(tag)}
+                      checked={selectedEpics.includes(epic)}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedTags([...selectedTags, tag]);
+                          setSelectedEpics([...selectedEpics, epic]);
                         } else {
-                          setSelectedTags(selectedTags.filter(t => t !== tag));
+                          setSelectedEpics(selectedEpics.filter(e => e !== epic));
                         }
                       }}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                     />
-                    <span className="text-slate-600 px-2 py-1 bg-slate-100 rounded-lg text-xs">
-                      {tag}
+                    <span className="text-slate-600 px-2 py-1 bg-purple-100 rounded-lg text-xs border border-purple-200">
+                      {epic}
                     </span>
                   </label>
                 ))}
-                {uniqueTags.length === 0 && (
-                  <p className="text-sm text-slate-400">No tags found</p>
+                {uniqueEpics.length === 0 && (
+                  <p className="text-sm text-slate-400">No epics found</p>
                 )}
               </div>
             </div>
@@ -164,7 +183,11 @@ const FilterSection: React.FC<FilterSectionProps> = ({
                       }}
                       className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className={`text-slate-600 px-2 py-1 rounded-lg text-xs`}>
+                    <span className={`text-slate-600 px-2 py-1 rounded-lg text-xs ${
+                      sprint === 'Backlog' 
+                        ? 'bg-slate-100 border border-slate-200' 
+                        : 'bg-blue-100 border border-blue-200'
+                    }`}>
                       {sprint === 'Backlog' ? 'Backlog' : `${sprint}`}
                     </span>
                   </label>

@@ -59,6 +59,20 @@ const SprintRouter: React.FC = () => {
     fetchSprintData();
   }, [user, boardId, sprintNo]);
 
+  // Calculate story points dynamically from tasks
+  const getTaskPoints = (task: any): number => {
+    // Use explicit story points if available
+    if (task.points !== null && task.points !== undefined) {
+      return task.points;
+    }
+    // Fallback to priority-based points
+    return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
+  };
+
+  // Get sprint tasks and calculate total story points
+  const sprintTasks = tasks.filter(task => task.sprintId === sprint?.id);
+  const totalStoryPoints = sprintTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+
   // Update active tab based on URL
   useEffect(() => {
     const pathSegments = location.pathname.split('/');
@@ -149,7 +163,7 @@ const SprintRouter: React.FC = () => {
 
     switch(activeTab) {
       case 'analytics':
-        return <SprintAnalytics tasks={tasks} board={currentBoard} />;
+        return <SprintAnalytics tasks={tasks.filter(t => t.sprintId === sprint.id)} board={currentBoard} />;
       case 'retro':
         // Create proper RetroData structure with defaults
         const retroDataWithDefaults = {
@@ -214,7 +228,7 @@ const SprintRouter: React.FC = () => {
                 <>
                   <div className="flex items-center gap-2">
                     <Target size={16} className="text-slate-400" />
-                    <span className="text-slate-600">{sprint.totalStoryPoints} story points</span>
+                    <span className="text-slate-600">{totalStoryPoints} story points</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} className="text-slate-400" />
@@ -224,7 +238,12 @@ const SprintRouter: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Users size={16} className="text-slate-400" />
-                    <span className="text-slate-600">{sprint.teamSize} team members</span>
+                    <span className="text-slate-600">
+                      {sprint.status === 'active' || sprint.status === 'planning'
+                        ? (currentBoard?.collaborators?.length || sprint.teamSize)
+                        : sprint.teamSize
+                      } team members
+                    </span>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                     sprint.status === 'active' ? 'bg-green-100 text-green-700' :

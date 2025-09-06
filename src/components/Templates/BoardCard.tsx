@@ -13,6 +13,7 @@ import { useAppDispatch, useAppSelector } from "../../hooks/redux";
 import { deleteBoard } from "../../store/slices/boardSlice";
 import { Board } from "../../store/types/types";
 import ConfirmModal from "../Atoms/ConfirmModal";
+import { hasPermissionLegacy } from "../../utils/permissions";
 
 interface BoardCardProps {
   board: Board;
@@ -74,15 +75,17 @@ const BoardCard: React.FC<BoardCardProps> = ({ board }) => {
               >
                 {board.category}
               </div>
-              <button
-                className="p-2 rounded-full bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-600 transition-all duration-200 opacity-0 group-hover:opacity-100 hover:scale-110"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowConfirm(true);
-                }}
-              >
-                <Trash2 size={16} />
-              </button>
+              {user && hasPermissionLegacy(board, user.email || '', 'canDeleteBoard') && (
+                <button
+                  className="p-2 rounded-full bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-600 transition-all duration-200 opacity-0 group-hover:opacity-100 hover:scale-110"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowConfirm(true);
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           </div>
 

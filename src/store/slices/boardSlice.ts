@@ -12,8 +12,8 @@ const initialState: BoardsState = {
 
 export const fetchBoards = createAsyncThunk(
   'boards/fetchBoards',
-  async (userId: string) => {
-    return await boardService.fetchUserBoards(userId);
+  async ({ userId, userEmail }: { userId: string; userEmail?: string }) => {
+    return await boardService.fetchUserBoards(userId, userEmail);
   }
 );
 

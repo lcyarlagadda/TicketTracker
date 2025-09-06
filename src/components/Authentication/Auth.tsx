@@ -10,7 +10,9 @@ import {
   Shield, 
   CheckCircle,
   LogOut,
-  Chrome
+  ArrowLeft,
+  Send,
+  KeyRound
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
@@ -18,18 +20,26 @@ import {
   signInUser, 
   signUpUser, 
   signInWithGoogle, 
-  signInWithMicrosoft,
   signInWithGitHub,
   signOut as signOutUser,
-  clearError 
+  clearError,
+  sendVerificationEmail,
+  checkEmailVerification,
+  sendPasswordResetEmailThunk,
+  confirmPasswordResetThunk
 } from '../../store/slices/authSlice';
 import ErrorModal from '../Atoms/ErrorModal';
+import SuccessModal from '../Atoms/SuccessModal';
+
+type AuthView = 'signin' | 'signup' | 'forgot' | 'reset' | 'verify';
 
 interface FormData {
   name: string;
   phone: string;
   email: string;
   password: string;
+  confirmPassword: string;
+  resetCode: string;
 }
 
 const Auth: React.FC = () => {
@@ -37,14 +47,17 @@ const Auth: React.FC = () => {
   const { user, loading, error } = useAppSelector(state => state.auth);
   const navigate = useNavigate();
 
+  const [view, setView] = useState<AuthView>('signin');
+  const [showPassword, setShowPassword] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const [form, setForm] = useState<FormData>({
     name: '',
     phone: '',
     email: '',
-    password: ''
+    password: '',
+    confirmPassword: '',
+    resetCode: ''
   });
-  const [showPassword, setShowPassword] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -73,14 +86,19 @@ const Auth: React.FC = () => {
     if (errorMessage.includes('too-many-requests')) {
       return 'Too many failed attempts. Please try again later.';
     }
-    return 'An unexpected error occurred. Please try again.';
+    return errorMessage || 'An unexpected error occurred. Please try again.';
   };
 
   const signUp = async () => {
-    const { name, phone, email, password } = form;
+    const { name, phone, email, password, confirmPassword } = form;
     
-    if (!name || !phone || !email || !password) {
+    if (!name || !phone || !email || !password || !confirmPassword) {
       dispatch({ type: 'auth/signUp/rejected', error: { message: 'Please fill in all fields' } });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      dispatch({ type: 'auth/signUp/rejected', error: { message: 'Passwords do not match' } });
       return;
     }
 
@@ -91,7 +109,8 @@ const Auth: React.FC = () => {
 
     try {
       await dispatch(signUpUser({ email, password, name })).unwrap();
-      navigate('/boards');
+      setSuccessMessage(`Verification email sent to ${email}. Please check your inbox and spam folder.`);
+      setView('verify');
     } catch (err: any) {
       console.error('Sign up error:', err);
     }
@@ -120,6 +139,73 @@ const Auth: React.FC = () => {
     }
   };
 
+  const githubSignIn = async () => {
+    try {
+      await dispatch(signInWithGitHub()).unwrap();
+      navigate('/boards');
+    } catch (err: any) {
+      console.error('GitHub sign in error:', err);
+    }
+  };
+
+  const sendResetEmail = async () => {
+    if (!form.email) {
+      dispatch({ type: 'auth/sendPasswordResetEmail/rejected', error: { message: 'Please enter your email' } });
+      return;
+    }
+    
+    try {
+      await dispatch(sendPasswordResetEmailThunk({ email: form.email })).unwrap();
+      setSuccessMessage(`Password reset email sent to ${form.email}. Please check your inbox and spam folder.`);
+      setView('reset');
+    } catch (err: any) {
+      console.error('Reset email error:', err);
+    }
+  };
+
+  const resetPassword = async () => {
+    if (!form.resetCode || !form.password || !form.confirmPassword) {
+      dispatch({ type: 'auth/confirmPasswordReset/rejected', error: { message: 'Please fill in all fields' } });
+      return;
+    }
+
+    if (form.password !== form.confirmPassword) {
+      dispatch({ type: 'auth/confirmPasswordReset/rejected', error: { message: 'Passwords do not match' } });
+      return;
+    }
+
+    if (form.password.length < 6) {
+      dispatch({ type: 'auth/confirmPasswordReset/rejected', error: { message: 'Password must be at least 6 characters' } });
+      return;
+    }
+
+    try {
+      await dispatch(confirmPasswordResetThunk({ code: form.resetCode, newPassword: form.password })).unwrap();
+      setView('signin');
+      setForm({ ...form, password: '', confirmPassword: '', resetCode: '' });
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+    }
+  };
+
+  const resendVerification = async () => {
+    try {
+      await dispatch(sendVerificationEmail()).unwrap();
+      setSuccessMessage(`Verification email resent to ${form.email}. Please check your inbox and spam folder.`);
+    } catch (err: any) {
+      console.error('Resend verification error:', err);
+    }
+  };
+
+  const checkVerification = async () => {
+    try {
+      await dispatch(checkEmailVerification()).unwrap();
+      navigate('/boards');
+    } catch (err: any) {
+      console.error('Check verification error:', err);
+    }
+  };
+
   const logOut = async () => {
     try {
       await dispatch(signOutUser()).unwrap();
@@ -129,192 +215,364 @@ const Auth: React.FC = () => {
     }
   };
 
+  const resetForm = () => {
+    setForm({
+      name: '',
+      phone: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      resetCode: ''
+    });
+    if (error) dispatch(clearError());
+    if (successMessage) setSuccessMessage('');
+  };
+
   // If user is logged in, show success state
   if (user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-60 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/60 overflow-hidden">
-            <div className="bg-gradient-to-r from-green-500 to-green-600 p-8 text-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-white/10"></div>
-              <div className="relative">
-                <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-                  <CheckCircle className="w-10 h-10 text-white" />
-                </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Welcome Back!</h2>
-                <p className="text-green-100">You're successfully logged in</p>
-              </div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 w-full max-w-sm">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Welcome!</h2>
+            <p className="text-gray-600 text-sm mb-4">You're logged in as:</p>
+            <p className="font-medium text-gray-800">{user.displayName || user.email}</p>
+            <p className="text-sm text-gray-500 mb-6">{user.email}</p>
             
-            <div className="p-8 text-center">
-              <div className="mb-6">
-                <p className="text-slate-600 mb-2">Logged in as:</p>
-                <p className="text-lg font-semibold text-slate-800">{user.displayName || user.email}</p>
-                <p className="text-sm text-slate-500">{user.email}</p>
-              </div>
-              
-              <button
-                onClick={logOut}
-                disabled={loading}
-                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-8 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2 mx-auto hover:scale-105 disabled:opacity-50"
-              >
-                <LogOut size={20} />
-                Sign Out
-              </button>
-            </div>
+            <button
+              onClick={logOut}
+              disabled={loading}
+              className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 mx-auto"
+            >
+              <LogOut size={16} />
+              Sign Out
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
+  const getViewConfig = () => {
+    switch (view) {
+      case 'signin':
+        return {
+          title: 'Welcome Back',
+          subtitle: 'Sign in to your account',
+          icon: <Shield className="w-6 h-6 text-white" />
+        };
+      case 'signup':
+        return {
+          title: 'Create Account',
+          subtitle: 'Join Ticket Tracker today',
+          icon: <User className="w-6 h-6 text-white" />
+        };
+      case 'forgot':
+        return {
+          title: 'Reset Password',
+          subtitle: 'Enter your email to reset',
+          icon: <Mail className="w-6 h-6 text-white" />
+        };
+      case 'reset':
+        return {
+          title: 'Enter Reset Code',
+          subtitle: 'Check your email for the code',
+          icon: <KeyRound className="w-6 h-6 text-white" />
+        };
+      case 'verify':
+        return {
+          title: 'Check Your Email',
+          subtitle: 'Verify your account to continue',
+          icon: <Send className="w-6 h-6 text-white" />
+        };
+    }
+  };
+
+  const config = getViewConfig();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-60 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
-        <div className="bg-white rounded-3xl shadow-2xl border border-slate-200/60 overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-600 p-8 text-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-white/10"></div>
-            <div className="relative">
-              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-                <Shield className="w-8 h-8 text-white" />
-              </div>
-              <h1 className="text-3xl font-bold text-white mb-2">
-                {isSignUp ? 'Create Account' : 'Welcome Back'}
-              </h1>
-              <p className="text-blue-100">
-                {isSignUp ? 'Join Ticket Tracker to manage your projects' : 'Sign in to your account'}
-              </p>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden w-full max-w-sm">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-center">
+          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+            {config.icon}
           </div>
+          <h1 className="text-xl font-bold text-white mb-1">{config.title}</h1>
+          <p className="text-blue-100 text-sm">{config.subtitle}</p>
+        </div>
 
-          <div className="p-8">
-            {/* Sign Up Fields */}
-            {isSignUp && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                <StylishInput
-                  label="Full Name"
-                  name="name"
-                  value={form.name}
-                  onChange={handleChange}
-                  icon={<User size={20} />}
-                  placeholder="John Doe"
-                />
-                <StylishInput
-                  label="Phone Number"
-                  name="phone"
-                  value={form.phone}
-                  onChange={handleChange}
-                  icon={<Phone size={20} />}
-                  placeholder="(555) 123-4567"
-                />
-              </div>
-            )}
+        <div className="p-6">
+          {/* Back button for secondary views */}
+          {view !== 'signin' && view !== 'signup' && (
+            <button
+              onClick={() => {
+                setView('signin');
+                resetForm();
+              }}
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-4 text-sm"
+            >
+              <ArrowLeft size={16} />
+              Back to sign in
+            </button>
+          )}
 
-            {/* Email */}
-            <div className="mb-6">
-              <StylishInput
-                label="Email Address"
+          {/* Sign In View */}
+          {view === 'signin' && (
+            <>
+              <Input
+                label="Email"
                 name="email"
                 type="email"
                 value={form.email}
                 onChange={handleChange}
-                icon={<Mail size={20} />}
+                icon={<Mail size={18} />}
                 placeholder="you@example.com"
               />
-            </div>
-
-            {/* Password */}
-            <div className="mb-6">
-              <StylishInput
+              
+              <Input
                 label="Password"
                 name="password"
                 type={showPassword ? 'text' : 'password'}
                 value={form.password}
                 onChange={handleChange}
-                icon={<Lock size={20} />}
-                placeholder={isSignUp ? 'Create a secure password' : 'Enter your password'}
+                icon={<Lock size={18} />}
+                placeholder="Enter password"
                 endIcon={
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                    className="text-gray-400 hover:text-gray-600"
                   >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 }
               />
-            </div>
 
-            {/* Auth Button */}
-            <button
-              onClick={isSignUp ? signUp : logIn}
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-purple-800 text-white px-6 py-4 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 mb-6 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105"
-            >
-              {loading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  {isSignUp ? 'Creating Account...' : 'Signing In...'}
-                </div>
-              ) : (
-                isSignUp ? 'Create Account' : 'Sign In'
-              )}
-            </button>
+              <button
+                onClick={() => setView('forgot')}
+                className="text-sm text-blue-600 hover:text-blue-700 mb-4 text-right w-full"
+              >
+                Forgot password?
+              </button>
 
-            {/* Divider */}
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-300"></div>
+              <Button onClick={logIn} loading={loading} variant="primary">
+                Sign In
+              </Button>
+
+              <div className="my-4 flex items-center">
+                <div className="flex-1 border-t border-gray-300"></div>
+                <span className="px-3 text-sm text-gray-500">or</span>
+                <div className="flex-1 border-t border-gray-300"></div>
               </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white text-slate-500">Or continue with</span>
-              </div>
-            </div>
 
-            {/* Google Sign In */}
-            <button
-              onClick={googleSignIn}
-              disabled={loading}
-              className="w-full border-2 border-slate-300 hover:border-slate-400 hover:bg-slate-50 px-6 py-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed mb-6 hover:scale-105"
-            >
-              <span className="font-medium text-slate-700">Continue with Google</span>
-            </button>
+              <Button onClick={googleSignIn} loading={loading} variant="outline" className="mb-3">
+                Continue with Google
+              </Button>
 
-          {/* GitHub Sign In */}
-          <button
-            onClick={async () => {
-              try {
-                await dispatch(signInWithGitHub()).unwrap();
-                navigate('/boards');
-              } catch (err: any) {
-                console.error('GitHub sign in error:', err);
-              }
-            }}
-            disabled={loading}
-            className="w-full border-2 border-slate-300 hover:border-slate-400 hover:bg-slate-50 px-6 py-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed mb-4 hover:scale-105"
-          >
-            <span className="font-medium text-slate-700">Continue with GitHub</span>
-          </button>
+              <Button onClick={githubSignIn} loading={loading} variant="outline" className="mb-4">
+                Continue with GitHub
+              </Button>
 
-
-            {/* Toggle Sign Up/In */}
-            <div className="text-center">
-              <p className="text-sm text-slate-600">
-                {isSignUp ? 'Already have an account?' : "Don't have an account?"}
-                <button 
+              <p className="text-center text-sm text-gray-600">
+                Don't have an account?{' '}
+                <button
                   onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setForm({ name: '', phone: '', email: '', password: '' });
-                    if (error) dispatch(clearError());
+                    setView('signup');
+                    resetForm();
                   }}
-                  className="ml-2 text-blue-600 hover:text-blue-700 font-semibold transition-colors"
+                  className="text-blue-600 hover:text-blue-700 font-medium"
                 >
-                  {isSignUp ? 'Sign In' : 'Sign Up'}
+                  Sign up
+                </button>
+              </p>
+            </>
+          )}
+
+          {/* Sign Up View */}
+          {view === 'signup' && (
+            <>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <Input
+                  label="Name"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="John"
+                  compact
+                />
+                <Input
+                  label="Phone"
+                  name="phone"
+                  value={form.phone}
+                  onChange={handleChange}
+                  placeholder="(555) 123-4567"
+                  compact
+                />
+              </div>
+
+              <Input
+                label="Email"
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                icon={<Mail size={18} />}
+                placeholder="you@example.com"
+              />
+
+              <Input
+                label="Password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={handleChange}
+                icon={<Lock size={18} />}
+                placeholder="Create password"
+                endIcon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                }
+              />
+
+              <Input
+                label="Confirm Password"
+                name="confirmPassword"
+                type="password"
+                value={form.confirmPassword}
+                onChange={handleChange}
+                icon={<Lock size={18} />}
+                placeholder="Confirm password"
+              />
+
+              <Button onClick={signUp} loading={loading} variant="primary">
+                Create Account
+              </Button>
+
+              <p className="text-center text-sm text-gray-600 mt-4">
+                Already have an account?{' '}
+                <button
+                  onClick={() => {
+                    setView('signin');
+                    resetForm();
+                  }}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Sign in
+                </button>
+              </p>
+            </>
+          )}
+
+          {/* Forgot Password View */}
+          {view === 'forgot' && (
+            <>
+              <Input
+                label="Email Address"
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                icon={<Mail size={18} />}
+                placeholder="Enter your email"
+              />
+
+              <Button onClick={sendResetEmail} loading={loading} variant="primary">
+                Send Reset Email
+              </Button>
+            </>
+          )}
+
+          {/* Reset Password View */}
+          {view === 'reset' && (
+            <>
+              <Input
+                label="Reset Code"
+                name="resetCode"
+                value={form.resetCode}
+                onChange={handleChange}
+                icon={<KeyRound size={18} />}
+                placeholder="Enter 6-digit code"
+              />
+
+              <Input
+                label="New Password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={handleChange}
+                icon={<Lock size={18} />}
+                placeholder="New password"
+                endIcon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                }
+              />
+
+              <Input
+                label="Confirm New Password"
+                name="confirmPassword"
+                type="password"
+                value={form.confirmPassword}
+                onChange={handleChange}
+                icon={<Lock size={18} />}
+                placeholder="Confirm new password"
+              />
+
+              <Button onClick={resetPassword} loading={loading} variant="primary">
+                Reset Password
+              </Button>
+            </>
+          )}
+
+          {/* Email Verification View */}
+          {view === 'verify' && (
+            <div className="text-center">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Mail className="w-8 h-8 text-blue-600" />
+              </div>
+              
+              <h3 className="font-medium text-gray-800 mb-2">Check your email</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                We sent a verification link to<br />
+                <span className="font-medium">{form.email}</span>
+              </p>
+
+              <Button onClick={checkVerification} loading={loading} variant="primary" className="mb-3">
+                I've verified my email
+              </Button>
+
+              <Button onClick={resendVerification} loading={loading} variant="outline" className="mb-4">
+                Resend Email
+              </Button>
+
+              <p className="text-sm text-gray-600">
+                Wrong email?{' '}
+                <button
+                  onClick={() => {
+                    setView('signup');
+                    resetForm();
+                  }}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Go back
                 </button>
               </p>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -325,12 +583,20 @@ const Auth: React.FC = () => {
           onClose={() => dispatch(clearError())} 
         />
       )}
+
+      {/* Success Modal */}
+      {successMessage && (
+        <SuccessModal 
+          message={successMessage} 
+          onClose={() => setSuccessMessage('')} 
+        />
+      )}
     </div>
   );
 };
 
-// Stylish Input Component
-interface StylishInputProps {
+// Compact Input Component
+interface InputProps {
   label: string;
   name: string;
   value: string;
@@ -339,9 +605,10 @@ interface StylishInputProps {
   icon?: React.ReactNode;
   endIcon?: React.ReactNode;
   placeholder?: string;
+  compact?: boolean;
 }
 
-const StylishInput: React.FC<StylishInputProps> = ({ 
+const Input: React.FC<InputProps> = ({ 
   label, 
   name, 
   value, 
@@ -349,21 +616,18 @@ const StylishInput: React.FC<StylishInputProps> = ({
   type = 'text', 
   icon, 
   endIcon, 
-  placeholder 
+  placeholder,
+  compact = false
 }) => {
-  const [focused, setFocused] = useState(false);
-  
   return (
-    <div className="relative">
-      <label className="block text-sm font-semibold text-slate-700 mb-2">
+    <div className={compact ? 'mb-3' : 'mb-4'}>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
         {label}
       </label>
-      <div className={`relative border-2 rounded-xl transition-all duration-300 ${
-        focused ? 'border-blue-500 shadow-lg shadow-blue-500/20' : 'border-slate-200 hover:border-slate-300'
-      }`}>
+      <div className="relative border border-gray-300 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
         <div className="flex items-center">
           {icon && (
-            <div className="p-4 text-slate-400">
+            <div className="p-3 text-gray-400">
               {icon}
             </div>
           )}
@@ -372,21 +636,52 @@ const StylishInput: React.FC<StylishInputProps> = ({
             name={name}
             value={value}
             onChange={onChange}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            className={`flex-1 p-4 bg-transparent focus:outline-none text-slate-800 placeholder-slate-400 ${
+            className={`flex-1 p-3 bg-transparent focus:outline-none text-gray-800 placeholder-gray-400 ${
               icon ? 'pl-0' : ''
             } ${endIcon ? 'pr-0' : ''}`}
             placeholder={placeholder}
           />
           {endIcon && (
-            <div className="p-4">
+            <div className="p-3">
               {endIcon}
             </div>
           )}
         </div>
       </div>
     </div>
+  );
+};
+
+// Button Component
+interface ButtonProps {
+  onClick: () => void;
+  loading: boolean;
+  variant: 'primary' | 'outline';
+  children: React.ReactNode;
+  className?: string;
+}
+
+const Button: React.FC<ButtonProps> = ({ onClick, loading, variant, children, className = '' }) => {
+  const baseClasses = "w-full px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  const variantClasses = variant === 'primary' 
+    ? "bg-blue-600 hover:bg-blue-700 text-white" 
+    : "border border-gray-300 hover:bg-gray-50 text-gray-700";
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={`${baseClasses} ${variantClasses} ${className}`}
+    >
+      {loading ? (
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+          Loading...
+        </div>
+      ) : (
+        children
+      )}
+    </button>
   );
 };
 

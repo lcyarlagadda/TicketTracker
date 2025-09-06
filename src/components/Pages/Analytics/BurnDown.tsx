@@ -41,7 +41,11 @@ const Burndown: React.FC<BurndownManagerProps> = ({ board, tasks }) => {
 
   // Get task points helper
   const getTaskPoints = (task: Task): number => {
-    if ((task as any).points) return (task as any).points;
+    // Use explicit story points if available
+    if (task.points !== null && task.points !== undefined) {
+      return task.points;
+    }
+    // Fallback to priority-based points
     return task.priority === 'High' ? 8 : task.priority === 'Medium' ? 5 : 3;
   };
 

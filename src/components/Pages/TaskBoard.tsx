@@ -1,4 +1,4 @@
-// components/Pages/TaskBoard.tsx - Enhanced with Sprint Management
+// components/Pages/TaskBoard.tsx - Enhanced with Sprint Management, Task Types, and Epic Support
 import React, { useEffect, useState, useMemo } from "react";
 import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd";
 import {
@@ -11,7 +11,7 @@ import {
   Search,
   Filter,
   UserCheck,
-  Tag,
+  Crown,
   UserRound,
   BarChart3,
   MessageSquare,
@@ -27,6 +27,8 @@ import {
   Zap,
   Layers,
   Calendar1Icon,
+  AlertCircle,
+  Shield,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
 import { useTasksSync } from "../../hooks/useFirebaseSync";
@@ -47,9 +49,14 @@ import TaskCard from "../Templates/TaskCard";
 import TaskModal from "./TaskModal";
 import TaskStats from "../TaskStats";
 import CreateTaskForm from "../Forms/CreateTaskForm";
+import ConfirmModal from "../Atoms/ConfirmModal";
+import RoleManagementModal from "../Atoms/RoleManagementModal";
 import ErrorModal from "../Atoms/ErrorModal";
 import { useNavigate } from "react-router-dom";
+import { notificationService } from "../../services/notificationService";
+import { boardService } from "../../services/boardService";
 import FilterSection from "../Atoms/Filter";
+import { hasPermissionLegacy, getRoleDisplayName } from "../../utils/permissions";
 
 interface TaskBoardProps {
   boardId: string;
@@ -79,40 +86,48 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const [newCollaboratorName, setNewCollaboratorName] = useState("");
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
-    null
-  );
+  const [collaboratorToDelete, setCollaboratorToDelete] = useState<string | null>(null);
+  const [columnToDelete, setColumnToDelete] = useState<string | null>(null);
   const [moveToColumn, setMoveToColumn] = useState<string>("");
+  const [showRoleManagement, setShowRoleManagement] = useState(false);
 
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedEpics, setSelectedEpics] = useState<string[]>([]);
   const [selectedSprints, setSelectedSprints] = useState<string[]>([]);
 
   // Current active sprint for board header
   const [currentSprint, setCurrentSprint] = useState<Sprint | null>(null);
 
-  // Get unique assignees, tags, and sprints from tasks
+  // Debug: Log when columnToDelete changes
+  useEffect(() => {
+    console.log('columnToDelete changed to:', columnToDelete);
+  }, [columnToDelete]);
+
+  // Get unique assignees, epics, and sprints from tasks
   const uniqueAssignees = useMemo(() => {
     const assignees = new Set<string>();
     tasks.forEach((task) => {
       if (task.assignedTo) {
-        assignees.add(task.assignedTo);
+        assignees.add(task.assignedTo.name);
       }
     });
     return Array.from(assignees);
   }, [tasks]);
 
-  const uniqueTags = useMemo(() => {
-    const tags = new Set<string>();
+  const uniqueEpics = useMemo(() => {
+    const epics = new Set<string>();
     tasks.forEach((task) => {
-      if (task.tags && task.tags.length > 0) {
-        task.tags.forEach((tag) => tags.add(tag));
+      if (task.epics && task.epics.length > 0) {
+        task.epics.forEach((epic) => epics.add(epic));
+      }
+      if(task.type === "epic" && task.title) {
+        epics.add(task.title);
       }
     });
-    return Array.from(tags);
+    return Array.from(epics);
   }, [tasks]);
 
   const uniqueSprints = useMemo(() => {
@@ -146,12 +161,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       // Assignee filter
       const matchesAssignee =
         selectedAssignees.length === 0 ||
-        (task.assignedTo && selectedAssignees.includes(task.assignedTo));
+        (selectedAssignees.includes('Unassigned') && !task.assignedTo) ||
+        (task.assignedTo && selectedAssignees.includes(task.assignedTo.name));
 
-      // Tags filter
-      const matchesTags =
-        selectedTags.length === 0 ||
-        (task.tags && task.tags.some((tag) => selectedTags.includes(tag)));
+      // Epic filter
+      const matchesEpic =
+        selectedEpics.length === 0 ||
+        (task.epics && task.epics.some((epic) => selectedEpics.includes(epic))) || task.type === "epic" && task.title && selectedEpics.includes(task.title);
 
       // Sprint filter
       const matchesSprint =
@@ -162,13 +178,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
           )) ||
         (!task.sprintId && selectedSprints.includes("Backlog"));
 
-      return matchesSearch && matchesAssignee && matchesTags && matchesSprint;
+      return matchesSearch && matchesAssignee && matchesEpic && matchesSprint;
     });
   }, [
     tasks,
     searchTerm,
     selectedAssignees,
-    selectedTags,
+    selectedEpics,
     selectedSprints,
     sprints,
   ]);
@@ -275,7 +291,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
   // Rest of the existing handlers (keeping them unchanged)
   const handleAddColumn = async () => {
-    const columnName = newColumnName.trim();
+    const columnName = newColumnName.trim().toLowerCase();
     if (!columnName || !user || !currentBoard) {
       setError("Column name is required.");
       return;
@@ -308,6 +324,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const deleteColumnDirectly = async (statusToDelete: string) => {
     if (!user || !currentBoard) return;
 
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can delete columns.");
+      return;
+    }
+
     const updatedStatuses = currentBoard.statuses.filter(
       (s) => s !== statusToDelete
     );
@@ -328,57 +350,76 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   };
 
   const handleDeleteColumn = async (statusToDelete: string) => {
+    console.log('handleDeleteColumn called with:', statusToDelete);
     if (!user || !currentBoard) return;
+
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can delete columns.");
+      return;
+    }
 
     const tasksInColumn = tasks.filter(
       (task) => task.status === statusToDelete
     );
 
-    if (tasksInColumn.length > 0) {
-      setShowDeleteConfirm(statusToDelete);
-      setMoveToColumn(
-        currentBoard.statuses.find((s) => s !== statusToDelete) || ""
-      );
-      return;
-    }
+    console.log('Tasks in column:', tasksInColumn.length);
 
-    await deleteColumnDirectly(statusToDelete);
+    // Always show confirmation dialog for column deletion
+    console.log('Setting columnToDelete to:', statusToDelete);
+    setColumnToDelete(statusToDelete);
+    setMoveToColumn(
+      currentBoard.statuses.find((s) => s !== statusToDelete) || ""
+    );
   };
 
   const confirmDeleteColumn = async () => {
-    if (!showDeleteConfirm || !user || !currentBoard || !moveToColumn) return;
+    if (!columnToDelete || !user || !currentBoard) return;
+
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can delete columns.");
+      setColumnToDelete(null);
+      return;
+    }
 
     const tasksInColumn = tasks.filter(
-      (task) => task.status === showDeleteConfirm
+      (task) => task.status === columnToDelete
     );
 
-    try {
-      for (const task of tasksInColumn) {
-        const updatedProgressLog = [
-          ...(task.progressLog || []),
-          {
-            type: "status-change" as const,
-            desc: `Task moved from deleted column "${showDeleteConfirm}" to "${moveToColumn}"`,
-            timestamp: new Date(),
-            user: user.displayName || user.email,
-          },
-        ];
+    // For columns with tasks, we need a moveToColumn
+    if (tasksInColumn.length > 0 && !moveToColumn) return;
 
-        await dispatch(
-          updateTask({
-            userId: user.uid,
-            boardId,
-            taskId: task.id,
-            updates: {
-              status: moveToColumn,
-              progressLog: updatedProgressLog,
+    try {
+      // Move tasks to the selected column (if there are any tasks)
+      if (tasksInColumn.length > 0) {
+        for (const task of tasksInColumn) {
+          const updatedProgressLog = [
+            ...(task.progressLog || []),
+            {
+              type: "status-change" as const,
+              desc: `Task moved from deleted column "${columnToDelete}" to "${moveToColumn}"`,
+              timestamp: new Date(),
+              user: user.displayName || user.email,
             },
-          })
-        );
+          ];
+
+          await dispatch(
+            updateTask({
+              userId: user.uid,
+              boardId,
+              taskId: task.id,
+              updates: {
+                status: moveToColumn,
+                progressLog: updatedProgressLog,
+              },
+            })
+          );
+        }
       }
 
-      await deleteColumnDirectly(showDeleteConfirm);
-      setShowDeleteConfirm(null);
+      await deleteColumnDirectly(columnToDelete);
+      setColumnToDelete(null);
       setMoveToColumn("");
     } catch (error) {
       setError("Failed to delete column and move tasks.");
@@ -408,7 +449,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     if (!alreadyExists) {
       const updatedCollaborators = [
         ...currentBoard.collaborators,
-        { name, email },
+        { name, email, role: 'user' as const },
       ];
 
       try {
@@ -421,6 +462,26 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
         ).unwrap();
 
         dispatch(updateCurrentBoardCollaborators(updatedCollaborators));
+
+        // Share board with the new collaborator
+        await boardService.shareBoardWithCollaborator(
+          user.uid,
+          currentBoard.id,
+          email,
+          'user'
+        );
+
+        // Send notification email in background
+        const boardUrl = `${window.location.origin}/board/${boardId}`;
+        notificationService.notifyCollaboratorAdded({
+          collaboratorEmail: email,
+          collaboratorName: name,
+          boardName: currentBoard.title,
+          addedBy: user.displayName || user.email || 'Unknown User',
+          boardUrl,
+        });
+        console.log('Collaborator notification queued for sending');
+
         setNewCollaborator("");
         setNewCollaboratorName("");
       } catch (error) {
@@ -429,12 +490,53 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     }
   };
 
-  const handleRemoveCollaborator = async (email: string) => {
-    if (!user || !currentBoard) return;
+  const handleRemoveCollaborator = (email: string) => {
+    setCollaboratorToDelete(email);
+  };
+
+  const confirmRemoveCollaborator = async () => {
+    if (!user || !currentBoard || !collaboratorToDelete) return;
 
     try {
       const updatedCollaborators = currentBoard.collaborators.filter(
-        (c) => c.email !== email
+        (c) => c.email !== collaboratorToDelete
+      );
+
+      await dispatch(
+        updateBoard({
+          userId: user.uid,
+          boardId: currentBoard.id,
+          updates: { collaborators: updatedCollaborators },
+        })
+      ).unwrap();
+
+      dispatch(updateCurrentBoardCollaborators(updatedCollaborators));
+
+      // Remove board access for the collaborator
+      // Note: We need to find the collaborator's userId to remove their access
+      // For now, we'll remove from pending access and the user will lose access on next login
+      try {
+        await boardService.unshareBoardWithCollaborator(collaboratorToDelete, currentBoard.id);
+      } catch (error) {
+        console.error('Error removing board access:', error);
+        // Continue anyway as the collaborator is removed from the list
+      }
+
+      setCollaboratorToDelete(null);
+    } catch (error) {
+      setError("Failed to remove collaborator.");
+      setCollaboratorToDelete(null);
+    }
+  };
+
+  const handleUpdateRole = async (collaboratorEmail: string, newRole: 'admin' | 'manager' | 'user') => {
+    if (!user || !currentBoard) return;
+
+    try {
+      const updatedCollaborators = currentBoard.collaborators.map(collab => 
+        collab.email === collaboratorEmail 
+          ? { ...collab, role: newRole }
+          : collab
       );
 
       await dispatch(
@@ -447,7 +549,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
       dispatch(updateCurrentBoardCollaborators(updatedCollaborators));
     } catch (error) {
-      setError("Failed to remove collaborator.");
+      setError("Failed to update role.");
     }
   };
 
@@ -476,23 +578,31 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   };
 
   const handleRenameStatus = async (oldStatus: string) => {
+    const trimmedNewName = newStatusName.trim().toLowerCase();
     if (
       !user ||
       !currentBoard ||
-      !newStatusName.trim() ||
-      newStatusName === oldStatus
+      !trimmedNewName ||
+      trimmedNewName === oldStatus
     ) {
       setEditingStatus(null);
       return;
     }
 
-    if (currentBoard.statuses.includes(newStatusName.trim())) {
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can rename columns.");
+      setEditingStatus(null);
+      return;
+    }
+
+    if (currentBoard.statuses.includes(trimmedNewName)) {
       setError("A column with that name already exists.");
       return;
     }
 
     const updatedStatuses = currentBoard.statuses.map((s) =>
-      s === oldStatus ? newStatusName.trim() : s
+      s === oldStatus ? trimmedNewName : s
     );
 
     try {
@@ -513,7 +623,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
             userId: user.uid,
             boardId,
             taskId: task.id,
-            updates: { status: newStatusName.trim() },
+            updates: { status: trimmedNewName },
           })
         );
       }
@@ -531,14 +641,14 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const clearFilters = () => {
     setSearchTerm("");
     setSelectedAssignees([]);
-    setSelectedTags([]);
+    setSelectedEpics([]);
     setSelectedSprints([]);
   };
 
   const hasActiveFilters =
     searchTerm !== "" ||
     selectedAssignees.length > 0 ||
-    selectedTags.length > 0 ||
+    selectedEpics.length > 0 ||
     selectedSprints.length > 0;
 
   if (loading || !currentBoard) {
@@ -582,7 +692,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
               <div className="flex justify-between items-center mb-4">
                 <button
                   onClick={() => setTeamSectionCollapsed(!teamSectionCollapsed)}
-                  className="flex items-center gap-2 flex-1"
+                  className="flex items-center gap-2"
                 >
                   <div className="p-2 rounded-xl bg-indigo-100">
                     <Users size={18} className="text-indigo-600" />
@@ -594,23 +704,37 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                     <ChevronUp size={16} className="text-slate-600" />
                   )}
                 </button>
+                
                 {!teamSectionCollapsed && (
-                  <button
-                    onClick={() =>
-                      setShowCollaboratorInput(!showCollaboratorInput)
-                    }
-                    className={`p-2 rounded-xl transition-all duration-200 ${
-                      showCollaboratorInput
-                        ? "bg-red-100 text-red-600 hover:bg-red-200"
-                        : "bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
-                    }`}
-                  >
-                    {showCollaboratorInput ? (
-                      <X size={16} />
-                    ) : (
-                      <Plus size={16} />
+                  <div className="flex gap-2">
+                    {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageCollaborators') && (
+                      <button
+                        onClick={() => setShowRoleManagement(true)}
+                        className="p-2 rounded-xl bg-purple-100 text-purple-600 hover:bg-purple-200 transition-all duration-200"
+                        title="Manage Roles"
+                      >
+                        <Shield size={16} />
+                      </button>
                     )}
-                  </button>
+                    {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageCollaborators') && (
+                      <button
+                        onClick={() =>
+                          setShowCollaboratorInput(!showCollaboratorInput)
+                        }
+                        className={`p-2 rounded-xl transition-all duration-200 ${
+                          showCollaboratorInput
+                            ? "bg-red-100 text-red-600 hover:bg-red-200"
+                            : "bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
+                        }`}
+                      >
+                        {showCollaboratorInput ? (
+                          <X size={16} />
+                        ) : (
+                          <Plus size={16} />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -677,11 +801,22 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                                 </span>
                               </div>
                               <div>
-                                <p className="font-semibold text-slate-800 text-sm">
-                                  {c.name.length > 12
-                                    ? `${c.name.slice(0, 12)}...`
-                                    : c.name}
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-slate-800 text-sm">
+                                    {c.name.length > 12
+                                      ? `${c.name.slice(0, 12)}...`
+                                      : c.name}
+                                  </p>
+                                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                    c.role === 'admin' 
+                                      ? 'bg-yellow-100 text-yellow-800' 
+                                      : c.role === 'manager'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {getRoleDisplayName(c.role)}
+                                  </span>
+                                </div>
                                 <p className="text-xs text-slate-500">
                                   {c.email.length > 12
                                     ? `${c.email.slice(0, 12)}...`
@@ -689,13 +824,15 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                                 </p>
                               </div>
                             </div>
-                            <button
-                              onClick={() => handleRemoveCollaborator(c.email)}
-                              className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 hover:bg-red-100 p-2 rounded-xl transition-all duration-200"
-                              title="Remove member"
-                            >
-                              <X size={14} />
-                            </button>
+                            {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageCollaborators') && (
+                              <button
+                                onClick={() => handleRemoveCollaborator(c.email)}
+                                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 hover:bg-red-100 p-2 rounded-xl transition-all duration-200"
+                                title="Remove member"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
                           </div>
                         )
                     )}
@@ -794,12 +931,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
               setShowFilters={setShowFilters}
               selectedAssignees={selectedAssignees}
               setSelectedAssignees={setSelectedAssignees}
-              selectedTags={selectedTags}
-              setSelectedTags={setSelectedTags}
+              selectedEpics={selectedEpics}
+              setSelectedEpics={setSelectedEpics}
               selectedSprints={selectedSprints}
               setSelectedSprints={setSelectedSprints}
               uniqueAssignees={uniqueAssignees}
-              uniqueTags={uniqueTags}
+              uniqueEpics={uniqueEpics}
               uniqueSprints={uniqueSprints}
               hasActiveFilters={hasActiveFilters}
               clearFilters={clearFilters}
@@ -855,27 +992,29 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               <h3 className="text-lg font-bold capitalize flex-1 text-slate-800">
                                 {status}
                               </h3>
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => {
-                                    setEditingStatus(status);
-                                    setNewStatusName(status);
-                                  }}
-                                  className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-all"
-                                  title="Rename column"
-                                >
-                                  <Edit size={14} />
-                                </button>
-                                {currentBoard.statuses.length > 1 && (
+                              {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageColumns') && (
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
-                                    onClick={() => handleDeleteColumn(status)}
-                                    className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-100 transition-all"
-                                    title="Delete column"
+                                    onClick={() => {
+                                      setEditingStatus(status);
+                                      setNewStatusName(status);
+                                    }}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-all"
+                                    title="Rename column"
                                   >
-                                    <Trash2 size={14} />
+                                    <Edit size={14} />
                                   </button>
-                                )}
-                              </div>
+                                  {currentBoard.statuses.length > 1 && (
+                                    <button
+                                      onClick={() => handleDeleteColumn(status)}
+                                      className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-100 transition-all"
+                                      title="Delete column"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                           <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full ml-2">
@@ -927,14 +1066,15 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                   ))}
 
                   {/* Add Column Button */}
-                  <div
-                    className="flex-shrink-0 flex items-start"
-                    style={{
-                      width: "100px",
-                      minWidth: "100px",
-                    }}
-                  >
-                    {showAddColumn ? (
+                  {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageColumns') && (
+                    <div
+                      className="flex-shrink-0 flex items-start"
+                      style={{
+                        width: "100px",
+                        minWidth: "100px",
+                      }}
+                    >
+                      {showAddColumn ? (
                       <div
                         className="bg-white/95 backdrop-blur-md rounded-2xl border-2 border-dashed border-blue-300 shadow-xl p-4"
                         style={{ width: "260px" }}
@@ -985,7 +1125,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                         />
                       </button>
                     )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </DragDropContext>
             </div>
@@ -1030,60 +1171,73 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
           task={selectedTask}
           onClose={() => dispatch(setSelectedTask(null))}
           sprints={sprints}
+          existingTasks={tasks}
         />
       )}
 
       {/* Delete Column Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      {columnToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
-            <div className="mb-6">
-              <h3 className="text-xl font-bold text-slate-800 mb-2">
-                Delete Column
-              </h3>
-              <p className="text-slate-600">
-                The column "
-                <span className="font-semibold">{showDeleteConfirm}</span>"
-                contains{" "}
-                {tasks.filter((t) => t.status === showDeleteConfirm).length}{" "}
-                task(s). Where would you like to move them?
-              </p>
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertCircle size={24} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Delete Column</h3>
+                <p className="text-slate-600 text-sm">This action cannot be undone</p>
+              </div>
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Move tasks to:
-              </label>
-              <select
-                value={moveToColumn}
-                onChange={(e) => setMoveToColumn(e.target.value)}
-                className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-              >
-                <option value="">Select a column...</option>
-                {currentBoard?.statuses
-                  .filter((s) => s !== showDeleteConfirm)
-                  .map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-              </select>
+              {tasks.filter((t) => t.status === columnToDelete).length > 0 ? (
+                <>
+                  <p className="text-slate-700 mb-4 leading-relaxed">
+                    The column "<span className="font-semibold">{columnToDelete}</span>" contains{" "}
+                    {tasks.filter((t) => t.status === columnToDelete).length}{" "}
+                    task(s). Where would you like to move them?
+                  </p>
+                  
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Move tasks to:
+                  </label>
+                  <select
+                    value={moveToColumn}
+                    onChange={(e) => setMoveToColumn(e.target.value)}
+                    className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">Select a column...</option>
+                    {currentBoard?.statuses
+                      .filter((s) => s !== columnToDelete)
+                      .map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                  </select>
+                </>
+              ) : (
+                <p className="text-slate-700 mb-4 leading-relaxed">
+                  Are you sure you want to delete the column "<span className="font-semibold">{columnToDelete}</span>"? 
+                  This action cannot be undone.
+                </p>
+              )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-end">
               <button
                 onClick={() => {
-                  setShowDeleteConfirm(null);
+                  setColumnToDelete(null);
                   setMoveToColumn("");
                 }}
-                className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-300 transition-colors"
+                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all duration-200"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDeleteColumn}
-                disabled={!moveToColumn}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed transition-colors"
+                disabled={tasks.filter((t) => t.status === columnToDelete).length > 0 && !moveToColumn}
+                className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-medium hover:from-red-600 hover:to-red-700 transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 Delete Column
               </button>
@@ -1093,6 +1247,28 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       )}
 
       <ErrorModal message={error} onClose={() => setError("")} />
+      
+      {/* Confirm Remove Collaborator Modal */}
+      {collaboratorToDelete && (
+        <ConfirmModal
+          message={`Are you sure you want to remove this team member? They will lose access to this board and all its tasks.`}
+          onConfirm={confirmRemoveCollaborator}
+          onClose={() => setCollaboratorToDelete(null)}
+          confirmText="Remove"
+          cancelText="Cancel"
+        />
+      )}
+
+      {/* Role Management Modal */}
+      {showRoleManagement && currentBoard && (
+        <RoleManagementModal
+          isOpen={showRoleManagement}
+          onClose={() => setShowRoleManagement(false)}
+          board={currentBoard}
+          currentUserEmail={user?.email || ''}
+          onUpdateRole={handleUpdateRole}
+        />
+      )}
     </div>
   );
 };
