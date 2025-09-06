@@ -1,6 +1,7 @@
 // services/authService.ts
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { auth } from '../firebase';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { User } from '../store/types/types';
 import { store } from '../store';
 import { setUser } from '../store/slices/authSlice';
@@ -23,12 +24,16 @@ class AuthService {
       
       store.dispatch(setUser(user));
       
-      // Grant pending board access when user logs in
+      // Create or update user record in Firestore and grant pending board access
       if (user) {
         try {
+          // Create or update user record in users collection
+          await this.createOrUpdateUserRecord(user);
+          
+          // Grant pending board access when user logs in
           await boardService.grantPendingAccessForUser(user.uid, user.email);
         } catch (error) {
-          console.error('Error granting pending board access:', error);
+          console.error('Error setting up user:', error);
         }
       }
     }, (error) => {
@@ -36,6 +41,37 @@ class AuthService {
       // Set user to null and loading to false on error
       store.dispatch(setUser(null));
     });
+  }
+
+  // Create or update user record in Firestore
+  private async createOrUpdateUserRecord(user: User): Promise<void> {
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        // Create new user record
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || '',
+          emailVerified: user.emailVerified,
+          createdAt: new Date(),
+          lastLoginAt: new Date()
+        });
+        console.log('New user record created:', user.email);
+      } else {
+        // Update existing user record with last login time
+        await setDoc(userRef, {
+          ...userDoc.data(),
+          lastLoginAt: new Date()
+        }, { merge: true });
+        console.log('User record updated:', user.email);
+      }
+    } catch (error) {
+      console.error('Error creating/updating user record:', error);
+      throw error;
+    }
   }
 
   // Clean up auth listener

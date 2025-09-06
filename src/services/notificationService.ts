@@ -50,14 +50,13 @@ class NotificationService {
       from_name: data.addedBy,
       from_email: data.collaboratorEmail, // This will be the reply-to address
       board_name: data.boardName,
-      message: `You have been added as a collaborator to the board "${data.boardName}" by ${data.addedBy}.`,
       action_type: 'collaborator_added',
       board_url: data.boardUrl,
       subject: `You've been added to board: ${data.boardName}`,
     };
 
     // Send email in background without blocking UI
-    this.sendEmail('template_collaborator_added', templateParams).catch(error => {
+    this.sendEmail('template_collaborator_ad', templateParams).catch(error => {
       console.error('Background email send failed:', error);
     });
   }
@@ -79,7 +78,6 @@ class NotificationService {
       from_email: data.assigneeEmail, // This will be the reply-to address
       board_name: data.boardName,
       task_title: data.taskTitle,
-      message: `You have been assigned to the task "${data.taskTitle}" in board "${data.boardName}" by ${data.assignedBy}.`,
       action_type: 'task_assigned',
       task_url: data.taskUrl,
       task_id: data.taskId,
@@ -117,10 +115,10 @@ class NotificationService {
       subject: `You were mentioned in ${data.context} for board: ${data.boardName}`,
     };
 
-    // Send email in background without blocking UI
-    this.sendEmail('template_mentioned', templateParams).catch(error => {
-      console.error('Background email send failed:', error);
-    });
+    // Send email in background without blocking UI -- commented for now as there are no credits
+    // this.sendEmail('template_mentioned', templateParams).catch(error => {
+    //   console.error('Background email send failed:', error);
+    // });
   }
 
   notifyTaskUpdated(data: {
@@ -157,10 +155,10 @@ class NotificationService {
       subject: `Task updated: ${data.taskTitle}`,
     };
 
-    // Send email in background without blocking UI
-    this.sendEmail('template_task_updated', templateParams).catch(error => {
-      console.error('Background email send failed:', error);
-    });
+    // Send email in background without blocking UI  -- commented for now as there are no credits
+    // this.sendEmail('template_task_updated', templateParams).catch(error => {
+    //   console.error('Background email send failed:', error);
+    // });
   }
 }
 

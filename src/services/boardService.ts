@@ -17,6 +17,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { db, storage } from '../firebase';
 import { Board, BoardRole, Collaborator } from '../store/types/types';
+import { notificationService } from './notificationService';
 
 class BoardService {
   // Fetch all boards for a user (owned + shared)
@@ -28,7 +29,7 @@ class BoardService {
         where('userId', '==', userId)
       );
       const accessSnapshot = await getDocs(boardAccessQuery);
-      const boardIds = accessSnapshot.docs.map(doc => doc.data().boardId);
+      const boardIds = [...new Set(accessSnapshot.docs.map(doc => doc.data().boardId))]; // Remove duplicates
 
       if (boardIds.length === 0) {
         return [];
@@ -71,7 +72,7 @@ class BoardService {
     );
     
     return onSnapshot(boardAccessQuery, async (accessSnapshot) => {
-      const boardIds = accessSnapshot.docs.map(doc => doc.data().boardId);
+      const boardIds = [...new Set(accessSnapshot.docs.map(doc => doc.data().boardId))]; // Remove duplicates
       
       if (boardIds.length === 0) {
         callback([]);
@@ -199,18 +200,69 @@ class BoardService {
   // Share board with collaborator
   async shareBoardWithCollaborator(ownerId: string, boardId: string, collaboratorEmail: string, role: BoardRole = 'user'): Promise<void> {
     try {
-      // First, we need to get the collaborator's userId from their email
-      // This would typically require a user lookup service or storing user emails in a users collection
-      // For now, we'll create a placeholder that can be updated when the user system is enhanced
+      // Get board information for notifications
+      const boardDoc = await getDoc(doc(db, 'boards', boardId));
+      if (!boardDoc.exists()) {
+        throw new Error('Board not found');
+      }
+      const board = boardDoc.data() as Board;
       
-      // Create a temporary access entry that can be claimed by the user when they sign up
-      await setDoc(doc(db, 'pendingBoardAccess', `${boardId}_${collaboratorEmail.replace(/[^a-zA-Z0-9]/g, '_')}`), {
-        boardId,
-        collaboratorEmail,
-        role,
-        sharedAt: serverTimestamp(),
-        sharedBy: ownerId
-      });
+      // Get owner information for notifications
+      const ownerDoc = await getDoc(doc(db, 'users', ownerId));
+      const ownerName = ownerDoc.exists() ? ownerDoc.data().displayName || ownerDoc.data().email : 'Unknown User';
+      
+      // First, check if there's a user with this email in our users collection
+      const userQuery = query(
+        collection(db, 'users'),
+        where('email', '==', collaboratorEmail)
+      );
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (!userSnapshot.empty) {
+        // User exists, grant immediate access
+        const userDoc = userSnapshot.docs[0];
+        const userId = userDoc.id;
+        const userData = userDoc.data();
+        
+        await setDoc(doc(db, 'boardAccess', `${boardId}_${userId}`), {
+          boardId,
+          userId,
+          role,
+          grantedAt: serverTimestamp(),
+          grantedBy: ownerId
+        });
+        
+        console.log(`Board shared with existing user ${collaboratorEmail} (immediate access granted)`);
+        
+        // Send notification to existing user
+        notificationService.notifyCollaboratorAdded({
+          collaboratorEmail,
+          collaboratorName: userData.displayName || userData.email,
+          boardName: board.title,
+          addedBy: ownerName,
+          boardUrl: `${window.location.origin}/board/${boardId}`
+        });
+      } else {
+        // User doesn't exist yet, create pending access
+        await setDoc(doc(db, 'pendingBoardAccess', `${boardId}_${collaboratorEmail.replace(/[^a-zA-Z0-9]/g, '_')}`), {
+          boardId,
+          collaboratorEmail,
+          role,
+          sharedAt: serverTimestamp(),
+          sharedBy: ownerId
+        });
+        
+        console.log(`Board shared with ${collaboratorEmail} (pending access created)`);
+        
+        // Send notification to new user (they'll get access when they sign up)
+        notificationService.notifyCollaboratorAdded({
+          collaboratorEmail,
+          collaboratorName: collaboratorEmail.split('@')[0], // Use email prefix as name
+          boardName: board.title,
+          addedBy: ownerName,
+          boardUrl: `${window.location.origin}/board/${boardId}`
+        });
+      }
     } catch (error) {
       console.error('Error sharing board:', error);
       throw error;

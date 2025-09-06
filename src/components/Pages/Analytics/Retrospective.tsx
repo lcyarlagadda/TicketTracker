@@ -921,20 +921,6 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
           <div>
             <h2 className="text-2xl font-bold text-slate-800">{sprint.name} Retrospective</h2>
             <p className="text-slate-600 mt-1">Reflect on what happened and plan improvements for the next sprint</p>
-            <div className="mt-2 text-sm text-slate-500">
-              Facilitator: {user?.displayName || 'You'} •
-              Last updated: {retroItems.length > 0 ? 'Recently' : 'Never'}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <div className={`w-2 h-2 rounded-full ${
-              saveStatus === 'saving' ? 'bg-yellow-500 animate-pulse' :
-              saveStatus === 'saved' ? 'bg-green-500' : 'bg-red-500'
-            }`}></div>
-            <span className="text-slate-600">
-              {saveStatus === 'saving' ? 'Saving...' :
-               saveStatus === 'saved' ? 'Saved' : 'Error saving'}
-            </span>
           </div>
         </div>
 

@@ -903,24 +903,6 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
               team insights, and future planning
             </p>
           </div>
-          {/* <div className="ml-auto flex items-center gap-2 text-sm">
-            <div
-              className={`w-2 h-2 rounded-full ${
-                saveStatus === "saving"
-                  ? "bg-yellow-500 animate-pulse"
-                  : saveStatus === "saved"
-                  ? "bg-green-500"
-                  : "bg-red-500"
-              }`}
-            ></div>
-            <span className="text-slate-600">
-              {saveStatus === "saving"
-                ? "Saving..."
-                : saveStatus === "saved"
-                ? "Saved"
-                : "Error saving"}
-            </span>
-          </div> */}
         </div>
 
         {/* Privacy Notice */}
