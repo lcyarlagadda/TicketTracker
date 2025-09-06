@@ -68,6 +68,7 @@ export interface ProgressLogEntry {
 
 export interface Sprint {
   id: string;
+  boardId: string;
   sprintNumber: number;
   name: string;
   goals: string[];
@@ -82,7 +83,6 @@ export interface Sprint {
   startDate: string;
   endDate: string;
   status: 'planning' | 'active' | 'completed' | 'cancelled';
-  boardId: string;
   createdAt: any;
   createdBy: {
     uid: string;
@@ -495,6 +495,25 @@ export interface SprintReflectionData {
   lastUpdated: string;
 }
 
+// Private reflection data structure for user-manager conversations
+export interface PrivateReflectionData {
+  sprintId: string;
+  sprintNumber: number;
+  userId: string; // The user this reflection belongs to
+  userEmail: string;
+  userName: string;
+  managerId?: string; // The manager reviewing this reflection
+  managerEmail?: string;
+  managerName?: string;
+  personalGrowth: EnhancedReflectionItem[];
+  teamInsights: EnhancedReflectionItem[];
+  lessonsLearned: EnhancedReflectionItem[];
+  futureGoals: EnhancedReflectionItem[];
+  managerFeedback: EnhancedReflectionItem[]; // Manager's feedback on the reflection
+  lastUpdated: string;
+  isPrivate: boolean; // Always true for private reflections
+}
+
 export interface NewReflectionForm {
   content: string;
   category: string;
@@ -503,7 +522,7 @@ export interface NewReflectionForm {
   rating: number;
 }
 
-export type TabKey = 'personal' | 'team' | 'lessons' | 'goals';
+export type TabKey = 'personal' | 'team' | 'lessons' | 'goals' | 'feedback';
 
 export interface TabConfig {
   key: TabKey;
@@ -584,6 +603,7 @@ export interface TeamHealthMetrics {
 export interface EnhancedBoard extends Board {
   [key: `sprintRetro_${string}`]: SprintRetroData;
   [key: `sprintReflection_${string}`]: SprintReflectionData;
+  [key: `privateReflection_${string}_${string}`]: PrivateReflectionData; // privateReflection_sprintId_userId
 }
 
 // Props for enhanced components

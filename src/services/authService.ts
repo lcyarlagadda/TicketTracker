@@ -4,13 +4,14 @@ import { auth } from '../firebase';
 import { User } from '../store/types/types';
 import { store } from '../store';
 import { setUser } from '../store/slices/authSlice';
+import { boardService } from './boardService';
 
 class AuthService {
   private unsubscribe: (() => void) | null = null;
 
   // Initialize auth state listener
   initializeAuthListener(): void {
-    this.unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+    this.unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       const user: User | null = firebaseUser
         ? {
             uid: firebaseUser.uid,
@@ -21,6 +22,15 @@ class AuthService {
         : null;
       
       store.dispatch(setUser(user));
+      
+      // Grant pending board access when user logs in
+      if (user) {
+        try {
+          await boardService.grantPendingAccessForUser(user.uid, user.email);
+        } catch (error) {
+          console.error('Error granting pending board access:', error);
+        }
+      }
     }, (error) => {
       console.error('Auth state change error:', error);
       // Set user to null and loading to false on error

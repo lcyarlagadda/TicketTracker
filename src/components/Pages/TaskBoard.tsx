@@ -56,7 +56,7 @@ import { useNavigate } from "react-router-dom";
 import { notificationService } from "../../services/notificationService";
 import { boardService } from "../../services/boardService";
 import FilterSection from "../Atoms/Filter";
-import { hasPermission, getUserRole, getRoleDisplayName } from "../../utils/permissions";
+import { hasPermissionLegacy, getRoleDisplayName } from "../../utils/permissions";
 
 interface TaskBoardProps {
   boardId: string;
@@ -324,6 +324,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const deleteColumnDirectly = async (statusToDelete: string) => {
     if (!user || !currentBoard) return;
 
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can delete columns.");
+      return;
+    }
+
     const updatedStatuses = currentBoard.statuses.filter(
       (s) => s !== statusToDelete
     );
@@ -347,6 +353,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     console.log('handleDeleteColumn called with:', statusToDelete);
     if (!user || !currentBoard) return;
 
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can delete columns.");
+      return;
+    }
+
     const tasksInColumn = tasks.filter(
       (task) => task.status === statusToDelete
     );
@@ -363,6 +375,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
   const confirmDeleteColumn = async () => {
     if (!columnToDelete || !user || !currentBoard) return;
+
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can delete columns.");
+      setColumnToDelete(null);
+      return;
+    }
 
     const tasksInColumn = tasks.filter(
       (task) => task.status === columnToDelete
@@ -444,8 +463,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
         dispatch(updateCurrentBoardCollaborators(updatedCollaborators));
 
-        // TODO: Implement board sharing mechanism
-        // For now, collaborators will need to be manually added to see the board
+        // Share board with the new collaborator
+        await boardService.shareBoardWithCollaborator(
+          user.uid,
+          currentBoard.id,
+          email,
+          'user'
+        );
 
         // Send notification email in background
         const boardUrl = `${window.location.origin}/board/${boardId}`;
@@ -488,8 +512,15 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
       dispatch(updateCurrentBoardCollaborators(updatedCollaborators));
 
-      // TODO: Implement board unsharing mechanism
-      // For now, removing from collaborators list is sufficient
+      // Remove board access for the collaborator
+      // Note: We need to find the collaborator's userId to remove their access
+      // For now, we'll remove from pending access and the user will lose access on next login
+      try {
+        await boardService.unshareBoardWithCollaborator(collaboratorToDelete, currentBoard.id);
+      } catch (error) {
+        console.error('Error removing board access:', error);
+        // Continue anyway as the collaborator is removed from the list
+      }
 
       setCollaboratorToDelete(null);
     } catch (error) {
@@ -554,6 +585,13 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       !trimmedNewName ||
       trimmedNewName === oldStatus
     ) {
+      setEditingStatus(null);
+      return;
+    }
+
+    // Check if user has permission to manage columns
+    if (!hasPermissionLegacy(currentBoard, user.email || '', 'canManageColumns')) {
+      setError("Access denied: Only managers and admins can rename columns.");
       setEditingStatus(null);
       return;
     }
@@ -654,7 +692,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
               <div className="flex justify-between items-center mb-4">
                 <button
                   onClick={() => setTeamSectionCollapsed(!teamSectionCollapsed)}
-                  className="flex items-center gap-2 flex-1"
+                  className="flex items-center gap-2"
                 >
                   <div className="p-2 rounded-xl bg-indigo-100">
                     <Users size={18} className="text-indigo-600" />
@@ -666,9 +704,10 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                     <ChevronUp size={16} className="text-slate-600" />
                   )}
                 </button>
+                
                 {!teamSectionCollapsed && (
                   <div className="flex gap-2">
-                    {hasPermission(currentBoard, user?.email || '', 'canManageCollaborators') && (
+                    {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageCollaborators') && (
                       <button
                         onClick={() => setShowRoleManagement(true)}
                         className="p-2 rounded-xl bg-purple-100 text-purple-600 hover:bg-purple-200 transition-all duration-200"
@@ -677,7 +716,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                         <Shield size={16} />
                       </button>
                     )}
-                    {hasPermission(currentBoard, user?.email || '', 'canManageCollaborators') && (
+                    {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageCollaborators') && (
                       <button
                         onClick={() =>
                           setShowCollaboratorInput(!showCollaboratorInput)
@@ -785,7 +824,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                                 </p>
                               </div>
                             </div>
-                            {hasPermission(currentBoard, user?.email || '', 'canManageCollaborators') && (
+                            {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageCollaborators') && (
                               <button
                                 onClick={() => handleRemoveCollaborator(c.email)}
                                 className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 hover:bg-red-100 p-2 rounded-xl transition-all duration-200"
@@ -953,27 +992,29 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               <h3 className="text-lg font-bold capitalize flex-1 text-slate-800">
                                 {status}
                               </h3>
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => {
-                                    setEditingStatus(status);
-                                    setNewStatusName(status);
-                                  }}
-                                  className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-all"
-                                  title="Rename column"
-                                >
-                                  <Edit size={14} />
-                                </button>
-                                {currentBoard.statuses.length > 1 && (
+                              {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageColumns') && (
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
-                                    onClick={() => handleDeleteColumn(status)}
-                                    className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-100 transition-all"
-                                    title="Delete column"
+                                    onClick={() => {
+                                      setEditingStatus(status);
+                                      setNewStatusName(status);
+                                    }}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-all"
+                                    title="Rename column"
                                   >
-                                    <Trash2 size={14} />
+                                    <Edit size={14} />
                                   </button>
-                                )}
-                              </div>
+                                  {currentBoard.statuses.length > 1 && (
+                                    <button
+                                      onClick={() => handleDeleteColumn(status)}
+                                      className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-100 transition-all"
+                                      title="Delete column"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                           <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full ml-2">
@@ -1025,7 +1066,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                   ))}
 
                   {/* Add Column Button */}
-                  {hasPermission(currentBoard, user?.email || '', 'canManageColumns') && (
+                  {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageColumns') && (
                     <div
                       className="flex-shrink-0 flex items-start"
                       style={{

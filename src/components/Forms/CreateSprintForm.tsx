@@ -5,6 +5,7 @@ import { useAppSelector } from '../../hooks/redux';
 import { Sprint, CreateSprintForm } from '../../store/types/types';
 import { sprintService } from '../../services/sprintService';
 import { useNavigate } from 'react-router-dom';
+import { hasPermissionLegacy } from '../../utils/permissions';
 
 interface SprintModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface SprintModalProps {
   onSprintSaved: (sprint: Sprint) => void;
   tasks: any[];
   teamSize: number;
+  currentBoard?: any;
 }
 
 const SprintModal: React.FC<SprintModalProps> = ({
@@ -23,13 +25,15 @@ const SprintModal: React.FC<SprintModalProps> = ({
   boardId,
   onSprintSaved,
   tasks,
-  teamSize
+  teamSize,
+  currentBoard
 }) => {
   const { user } = useAppSelector(state => state.auth);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
   const isEditing = !!sprint;
   const isActiveSprint = sprint?.status === 'active';
+  const canManageSprints = currentBoard ? hasPermissionLegacy(currentBoard, user?.email || '', 'canManageSprints') : false;
   const isCompletedSprint = sprint?.status === 'completed';
 
   // Form state with enhanced fields
@@ -282,7 +286,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
                   onChange={(e) => handleFormChange('sprintNumber', parseInt(e.target.value) || 1)}
                   className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   min="1"
-                  disabled={isEditing}
+                  disabled={isEditing || !canManageSprints}
                 />
               </div>
               
@@ -294,7 +298,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
                   onChange={(e) => handleFormChange('name', e.target.value)}
                   placeholder={`Sprint ${sprintForm.sprintNumber}`}
                   className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={isCompletedSprint}
+                  disabled={isCompletedSprint || !canManageSprints}
                 />
               </div>
               
@@ -307,7 +311,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
                   className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   min="1"
                   max="30"
-                  disabled={isActiveSprint || isCompletedSprint}
+                  disabled={isActiveSprint || isCompletedSprint || !canManageSprints}
                 />
               </div>
 
@@ -319,7 +323,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
                   onChange={(e) => handleFormChange('teamCapacityPerWeek', parseInt(e.target.value) || 200)}
                   className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   min="1"
-                  disabled={isCompletedSprint}
+                  disabled={isCompletedSprint || !canManageSprints}
                 />
               </div>
             </div>
@@ -332,7 +336,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
               {/* Sprint Goals */}
               <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
                 <h4 className="font-semibold text-blue-800 mb-3">Sprint Goals</h4>
-                {!isCompletedSprint && (
+                {!isCompletedSprint && canManageSprints && (
                   <div className="flex gap-2 mb-3">
                     <input
                       type="text"
@@ -354,7 +358,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
                   {sprintForm.goals.map((goal, index) => (
                     <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
                       <span className="text-sm">{goal}</span>
-                      {!isCompletedSprint && (
+                      {!isCompletedSprint && canManageSprints && (
                         <button
                           onClick={() => removeFromArray('goals', index)}
                           className="text-blue-600 hover:text-blue-800"
@@ -455,7 +459,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
             >
               {isCompletedSprint ? 'Close' : 'Cancel'}
             </button>
-            {!isCompletedSprint && (
+            {!isCompletedSprint && canManageSprints && (
               <button
                 onClick={handleSave}
                 disabled={sprintForm.goals.length === 0 || saveStatus === 'saving'}

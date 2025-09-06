@@ -1,4 +1,6 @@
 import { BoardRole, BoardPermissions, Collaborator, Board } from '../store/types/types';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 // Define permissions for each role
 export const ROLE_PERMISSIONS: Record<BoardRole, BoardPermissions> = {
@@ -28,8 +30,22 @@ export const ROLE_PERMISSIONS: Record<BoardRole, BoardPermissions> = {
   },
 };
 
-// Get user's role in a board
-export const getUserRole = (board: Board, userEmail: string): BoardRole | null => {
+// Get user's role in a board from the new boardAccess collection
+export const getUserRole = async (boardId: string, userId: string): Promise<BoardRole | null> => {
+  try {
+    const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+    if (accessDoc.exists()) {
+      return accessDoc.data().role as BoardRole;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting user role:', error);
+    return null;
+  }
+};
+
+// Legacy method for backward compatibility (deprecated)
+export const getUserRoleLegacy = (board: Board, userEmail: string): BoardRole | null => {
   // Board creator is always admin
   if (board.createdBy.email === userEmail) {
     return 'admin';
@@ -40,9 +56,9 @@ export const getUserRole = (board: Board, userEmail: string): BoardRole | null =
   return collaborator ? collaborator.role : null;
 };
 
-// Get user's permissions in a board
-export const getUserPermissions = (board: Board, userEmail: string): BoardPermissions => {
-  const role = getUserRole(board, userEmail);
+// Get user's permissions in a board (async version for new structure)
+export const getUserPermissions = async (boardId: string, userId: string): Promise<BoardPermissions> => {
+  const role = await getUserRole(boardId, userId);
   return role ? ROLE_PERMISSIONS[role] : {
     canManageColumns: false,
     canManageCollaborators: false,
@@ -53,44 +69,100 @@ export const getUserPermissions = (board: Board, userEmail: string): BoardPermis
   };
 };
 
-// Check if user has specific permission
-export const hasPermission = (
+// Legacy method for backward compatibility (deprecated)
+export const getUserPermissionsLegacy = (board: Board, userEmail: string): BoardPermissions => {
+  const role = getUserRoleLegacy(board, userEmail);
+  return role ? ROLE_PERMISSIONS[role] : {
+    canManageColumns: false,
+    canManageCollaborators: false,
+    canManageSprints: false,
+    canGiveManagerReviews: false,
+    canDeleteBoard: false,
+    canEditBoardSettings: false,
+  };
+};
+
+// Check if user has specific permission (async version for new structure)
+export const hasPermission = async (
+  boardId: string, 
+  userId: string, 
+  permission: keyof BoardPermissions
+): Promise<boolean> => {
+  const permissions = await getUserPermissions(boardId, userId);
+  return permissions[permission];
+};
+
+// Legacy method for backward compatibility (deprecated)
+export const hasPermissionLegacy = (
   board: Board, 
   userEmail: string, 
   permission: keyof BoardPermissions
 ): boolean => {
-  const permissions = getUserPermissions(board, userEmail);
+  const permissions = getUserPermissionsLegacy(board, userEmail);
   return permissions[permission];
 };
 
-// Check if user is admin
-export const isAdmin = (board: Board, userEmail: string): boolean => {
-  return getUserRole(board, userEmail) === 'admin';
+// Check if user is admin (async version for new structure)
+export const isAdmin = async (boardId: string, userId: string): Promise<boolean> => {
+  return (await getUserRole(boardId, userId)) === 'admin';
 };
 
-// Check if user is manager or admin
-export const isManagerOrAdmin = (board: Board, userEmail: string): boolean => {
-  const role = getUserRole(board, userEmail);
+// Legacy method for backward compatibility (deprecated)
+export const isAdminLegacy = (board: Board, userEmail: string): boolean => {
+  return getUserRoleLegacy(board, userEmail) === 'admin';
+};
+
+// Check if user is manager or admin (async version for new structure)
+export const isManagerOrAdmin = async (boardId: string, userId: string): Promise<boolean> => {
+  const role = await getUserRole(boardId, userId);
   return role === 'manager' || role === 'admin';
 };
 
-// Check if user can give manager reviews
-export const canGiveManagerReviews = (board: Board, userEmail: string): boolean => {
-  return hasPermission(board, userEmail, 'canGiveManagerReviews');
+// Legacy method for backward compatibility (deprecated)
+export const isManagerOrAdminLegacy = (board: Board, userEmail: string): boolean => {
+  const role = getUserRoleLegacy(board, userEmail);
+  return role === 'manager' || role === 'admin';
 };
 
-// Get all users with manager or admin roles
+// Check if user can give manager reviews (async version for new structure)
+export const canGiveManagerReviews = async (boardId: string, userId: string): Promise<boolean> => {
+  return await hasPermission(boardId, userId, 'canGiveManagerReviews');
+};
+
+// Legacy method for backward compatibility (deprecated)
+export const canGiveManagerReviewsLegacy = (board: Board, userEmail: string): boolean => {
+  return hasPermissionLegacy(board, userEmail, 'canGiveManagerReviews');
+};
+
+// Get all users with manager or admin roles (legacy method - deprecated)
 export const getManagersAndAdmins = (board: Board): Collaborator[] => {
   return board.collaborators.filter(c => c.role === 'manager' || c.role === 'admin');
 };
 
-// Validate role assignment (only admins can assign manager roles)
-export const canAssignRole = (
+// Validate role assignment (async version for new structure)
+export const canAssignRole = async (
+  boardId: string, 
+  assignerUserId: string, 
+  targetRole: BoardRole
+): Promise<boolean> => {
+  const assignerRole = await getUserRole(boardId, assignerUserId);
+  
+  // Only admins can assign roles
+  if (assignerRole !== 'admin') {
+    return false;
+  }
+  
+  // Admins can assign any role
+  return true;
+};
+
+// Legacy method for backward compatibility (deprecated)
+export const canAssignRoleLegacy = (
   board: Board, 
   assignerEmail: string, 
   targetRole: BoardRole
 ): boolean => {
-  const assignerRole = getUserRole(board, assignerEmail);
+  const assignerRole = getUserRoleLegacy(board, assignerEmail);
   
   // Only admins can assign roles
   if (assignerRole !== 'admin') {

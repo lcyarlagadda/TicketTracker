@@ -963,22 +963,6 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
         </div>
       </div>
 
-      {/* Enhanced Mention Helper */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200 p-4">
-        <div className="flex items-start gap-4">
-          <div className="flex gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <AtSign size={16} className="text-blue-600" />
-              <span className="text-slate-700">Type <code className="bg-white px-1 rounded">@username</code> to mention team members</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Hash size={16} className="text-green-600" />
-              <span className="text-slate-700">Type <code className="bg-white px-1 rounded">#task</code> to reference tasks (clickable)</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Retrospective Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {(Object.entries(columnConfig) as Array<[keyof typeof columnConfig, typeof columnConfig[keyof typeof columnConfig]]>).map(([type, config]) => {

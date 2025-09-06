@@ -8,7 +8,6 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  orderBy,
   where,
   serverTimestamp,
   onSnapshot,
@@ -18,6 +17,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../firebase';
 import { Sprint, Task } from '../store/types/types';
+import { hasPermission } from '../utils/permissions';
 
 class SprintService {
   // Create a new sprint
@@ -27,15 +27,22 @@ class SprintService {
     sprintData: Omit<Sprint, 'id'>
   ): Promise<Sprint> {
     try {
+      // Check if user has permission to manage sprints
+      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      if (!canManage) {
+        throw new Error('Access denied: Only managers and admins can create sprints');
+      }
+
       const sprintId = uuidv4();
       
       const newSprint = {
         ...sprintData,
+        boardId,
         createdAt: serverTimestamp(),
       };
 
       await setDoc(
-        doc(db, 'users', userId, 'boards', boardId, 'sprints', sprintId), 
+        doc(db, 'sprints', sprintId), 
         newSprint
       );
 
@@ -49,16 +56,45 @@ class SprintService {
   // Fetch all sprints for a board
   async fetchBoardSprints(userId: string, boardId: string): Promise<Sprint[]> {
     try {
+      console.log(`Fetching sprints for user ${userId} and board ${boardId}`);
+      
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      console.log(`Board access exists: ${accessDoc.exists()}`);
+      
+      if (!accessDoc.exists()) {
+        // If no direct access, check if user is the board creator
+        const boardDoc = await getDoc(doc(db, 'boards', boardId));
+        if (!boardDoc.exists()) {
+          console.log('Board not found');
+          throw new Error('Board not found');
+        }
+        const boardData = boardDoc.data();
+        console.log(`Board creator: ${boardData.createdBy.uid}, Current user: ${userId}`);
+        if (boardData.createdBy.uid !== userId) {
+          console.log('Access denied - not board creator');
+          throw new Error('Access denied to board');
+        }
+        console.log('Access granted - user is board creator');
+      } else {
+        console.log('Access granted - user has board access');
+      }
+
       const sprintsQuery = query(
-        collection(db, 'users', userId, 'boards', boardId, 'sprints'),
-        orderBy('sprintNumber', 'desc')
+        collection(db, 'sprints'),
+        where('boardId', '==', boardId)
       );
       const snapshot = await getDocs(sprintsQuery);
-      return snapshot.docs.map(doc => ({ 
+      console.log(`Found ${snapshot.docs.length} sprints`);
+      
+      const sprints = snapshot.docs.map(doc => ({ 
         id: doc.id, 
         boardId, 
         ...doc.data() 
       } as Sprint));
+      
+      // Sort in memory by sprint number
+      return sprints.sort((a, b) => (b.sprintNumber || 0) - (a.sprintNumber || 0));
     } catch (error) {
       console.error('Error fetching sprints:', error);
       throw error;
@@ -68,8 +104,22 @@ class SprintService {
   // Fetch a specific sprint
   async fetchSprint(userId: string, boardId: string, sprintId: string): Promise<Sprint> {
     try {
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        // If no direct access, check if user is the board creator
+        const boardDoc = await getDoc(doc(db, 'boards', boardId));
+        if (!boardDoc.exists()) {
+          throw new Error('Board not found');
+        }
+        const boardData = boardDoc.data();
+        if (boardData.createdBy.uid !== userId) {
+          throw new Error('Access denied to board');
+        }
+      }
+
       const sprintDoc = await getDoc(
-        doc(db, 'users', userId, 'boards', boardId, 'sprints', sprintId)
+        doc(db, 'sprints', sprintId)
       );
       if (!sprintDoc.exists()) {
         throw new Error('Sprint not found');
@@ -89,7 +139,13 @@ class SprintService {
     updates: Partial<Sprint>
   ): Promise<void> {
     try {
-      const sprintRef = doc(db, 'users', userId, 'boards', boardId, 'sprints', sprintId);
+      // Check if user has permission to manage sprints
+      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      if (!canManage) {
+        throw new Error('Access denied: Only managers and admins can update sprints');
+      }
+
+      const sprintRef = doc(db, 'sprints', sprintId);
       await updateDoc(sprintRef, updates);
     } catch (error) {
       console.error('Error updating sprint:', error);
@@ -100,11 +156,17 @@ class SprintService {
   // Delete sprint
   async deleteSprint(userId: string, boardId: string, sprintId: string): Promise<void> {
     try {
+      // Check if user has permission to manage sprints
+      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      if (!canManage) {
+        throw new Error('Access denied: Only managers and admins can delete sprints');
+      }
+
       // First, unassign all tasks from this sprint
       await this.unassignAllTasksFromSprint(userId, boardId, sprintId);
       
       // Then delete the sprint
-      await deleteDoc(doc(db, 'users', userId, 'boards', boardId, 'sprints', sprintId));
+      await deleteDoc(doc(db, 'sprints', sprintId));
     } catch (error) {
       console.error('Error deleting sprint:', error);
       throw error;
@@ -119,16 +181,22 @@ class SprintService {
     taskIds: string[]
   ): Promise<void> {
     try {
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
       const batch = writeBatch(db);
       
       // Update each task with the sprint ID
       for (const taskId of taskIds) {
-        const taskRef = doc(db, 'users', userId, 'boards', boardId, 'tasks', taskId);
+        const taskRef = doc(db, 'tasks', taskId);
         batch.update(taskRef, { sprintId });
       }
       
       // Update sprint with task IDs only (no static story points)
-      const sprintRef = doc(db, 'users', userId, 'boards', boardId, 'sprints', sprintId);
+      const sprintRef = doc(db, 'sprints', sprintId);
       
       batch.update(sprintRef, { 
         taskIds
@@ -149,9 +217,16 @@ class SprintService {
     sprintId: string
   ): Promise<void> {
     try {
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
       // Fetch tasks assigned to this sprint
       const tasksQuery = query(
-        collection(db, 'users', userId, 'boards', boardId, 'tasks'),
+        collection(db, 'tasks'),
+        where('boardId', '==', boardId),
         where('sprintId', '==', sprintId)
       );
       const snapshot = await getDocs(tasksQuery);
@@ -176,10 +251,16 @@ class SprintService {
     taskIds: string[]
   ): Promise<Task[]> {
     try {
+      // Check if user has access to this board
+      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+      if (!accessDoc.exists()) {
+        throw new Error('Access denied to board');
+      }
+
       const tasks = [];
       for (const taskId of taskIds) {
         const taskDoc = await getDoc(
-          doc(db, 'users', userId, 'boards', boardId, 'tasks', taskId)
+          doc(db, 'tasks', taskId)
         );
         if (taskDoc.exists()) {
           tasks.push({ id: taskDoc.id, boardId, ...taskDoc.data() } as Task);
@@ -241,8 +322,23 @@ class SprintService {
   // Fetch tasks for a specific sprint
 async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promise<Task[]> {
   try {
+    // Check if user has access to this board
+    const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
+    if (!accessDoc.exists()) {
+      // If no direct access, check if user is the board creator
+      const boardDoc = await getDoc(doc(db, 'boards', boardId));
+      if (!boardDoc.exists()) {
+        throw new Error('Board not found');
+      }
+      const boardData = boardDoc.data();
+      if (boardData.createdBy.uid !== userId) {
+        throw new Error('Access denied to board');
+      }
+    }
+
     const tasksQuery = query(
-      collection(db, 'users', userId, 'boards', boardId, 'tasks'),
+      collection(db, 'tasks'),
+      where('boardId', '==', boardId),
       where('sprintId', '==', sprintId)
     );
     const snapshot = await getDocs(tasksQuery);
@@ -271,8 +367,8 @@ async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promi
     callback: (sprints: Sprint[]) => void
   ): Unsubscribe {
     const sprintsQuery = query(
-      collection(db, 'users', userId, 'boards', boardId, 'sprints'),
-      orderBy('sprintNumber', 'desc')
+      collection(db, 'sprints'),
+      where('boardId', '==', boardId)
     );
     
     return onSnapshot(sprintsQuery, (snapshot) => {
@@ -281,7 +377,9 @@ async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promi
         boardId, 
         ...doc.data() 
       } as Sprint));
-      callback(sprints);
+      // Sort in memory
+      const sortedSprints = sprints.sort((a, b) => (b.sprintNumber || 0) - (a.sprintNumber || 0));
+      callback(sortedSprints);
     });
   }
 

@@ -8,6 +8,7 @@ import { sprintService } from '../../../services/sprintService';
 import { fetchBoard } from '../../../store/slices/boardSlice';
 import { useNavigate } from 'react-router-dom';
 import SprintModal from '../../Forms/CreateSprintForm';
+import { hasPermissionLegacy } from '../../../utils/permissions';
 
 interface SprintPlanningProps {
   boardId: string;
@@ -24,6 +25,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
+  const [canManageSprints, setCanManageSprints] = useState(false);
 
   // Calculate team size based on board collaborators (for new sprints)
   const teamSize = useMemo(() => {
@@ -41,6 +43,14 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
       dispatch(fetchBoard({ userId: user.uid, boardId }));
     }
   }, [user, boardId, currentBoard, dispatch]);
+
+  // Check sprint management permissions
+  useEffect(() => {
+    if (currentBoard && user) {
+      const hasPermission = hasPermissionLegacy(currentBoard, user.email || '', 'canManageSprints');
+      setCanManageSprints(hasPermission);
+    }
+  }, [currentBoard, user]);
 
   // Fetch sprints
   useEffect(() => {
@@ -218,13 +228,15 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
               <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
               <span className="font-medium">Back to Board</span>
             </button>
-            <button
-              onClick={handleCreateSprint}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={16} />
-              Create Sprint
-            </button>
+            {canManageSprints && (
+              <button
+                onClick={handleCreateSprint}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={16} />
+                Create Sprint
+              </button>
+            )}
             </div>
         </div>
 
@@ -239,13 +251,15 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                 </p>
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => handleEditSprint(activeSprint)}
-                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  <Edit3 size={14} />
-                  Edit
-                </button>
+                {canManageSprints && (
+                  <button
+                    onClick={() => handleEditSprint(activeSprint)}
+                    className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    <Edit3 size={14} />
+                    Edit
+                  </button>
+                )}
                 <button
                   onClick={() => navigateToSprintAnalytics(activeSprint.sprintNumber)}
                   className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
@@ -375,21 +389,30 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleEditSprint(sprint)}
-                      className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
-                    >
-                      
-                      {sprint.status === 'completed' ? (
-                        <>
-                          <EyeIcon size={14} /> View
-                        </>
-                      ) : (
-                        <>
-                          <Edit3 size={14} /> Edit
-                        </>
-                      )}
-                    </button>
+                    {canManageSprints ? (
+                      <button
+                        onClick={() => handleEditSprint(sprint)}
+                        className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
+                      >
+                        
+                        {sprint.status === 'completed' ? (
+                          <>
+                            <EyeIcon size={14} /> View
+                          </>
+                        ) : (
+                          <>
+                            <Edit3 size={14} /> Edit
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleEditSprint(sprint)}
+                        className="flex items-center gap-1 px-3 py-1 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm"
+                      >
+                        <EyeIcon size={14} /> View
+                      </button>
+                    )}
                     {(sprint.status === 'active' || sprint.status === 'completed') && (
                       <>
                         <button
@@ -415,7 +438,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                         </button>
                       </>
                     )}
-                    {sprint.status === 'planning' && canStartSprint(sprint) && (
+                    {sprint.status === 'planning' && canStartSprint(sprint) && canManageSprints && (
                       <button
                         onClick={() => startSprint(sprint.id)}
                         className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
@@ -424,7 +447,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                         Start Sprint
                       </button>
                     )}
-                    {sprint.status === 'active' && (
+                    {sprint.status === 'active' && canManageSprints && (
                       <button
                         onClick={() => completeSprint(sprint.id)}
                         className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
@@ -498,13 +521,20 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
           <div className="text-center py-12 text-slate-500">
             <Target size={48} className="mx-auto mb-4 text-slate-300" />
             <h4 className="text-lg font-medium mb-2">No sprints created yet</h4>
-            <p className="text-slate-400 mb-4">Create your first sprint to start planning and tracking work</p>
-            <button
-              onClick={handleCreateSprint}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Create First Sprint
-            </button>
+            <p className="text-slate-400 mb-4">
+              {canManageSprints 
+                ? "Create your first sprint to start planning and tracking work"
+                : "Only managers and admins can create sprints. Contact your manager to get started."
+              }
+            </p>
+            {canManageSprints && (
+              <button
+                onClick={handleCreateSprint}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create First Sprint
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -521,6 +551,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
         onSprintSaved={handleSprintSaved}
         tasks={tasks}
         teamSize={teamSize}
+        currentBoard={currentBoard}
       />
     </div>
   );

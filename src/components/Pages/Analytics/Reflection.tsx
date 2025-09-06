@@ -17,6 +17,7 @@ import {
   Send,
   Hash,
   AtSign,
+  Shield,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../hooks/redux";
 import { notificationService } from "../../../services/notificationService";
@@ -26,6 +27,7 @@ import {
   Board,
   Sprint,
   SprintReflectionData,
+  PrivateReflectionData,
   NewReflectionForm,
   TabKey,
   TabConfig,
@@ -36,6 +38,7 @@ import {
 } from "../../../store/types/types";
 import { useParams } from "react-router-dom";
 import { sprintService } from "../../../services/sprintService";
+import { privateReflectionService } from "../../../services/privateReflectionService";
 import { SmartCommentInput } from "../../Atoms/TaskSelectionModal";
 import TaskModal from "../TaskModal";
 
@@ -317,17 +320,24 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   const { sprintNo } = useParams();
 
   const [sprint, setSprint] = useState<Sprint | null>(null);
-  const [reflectionData, setReflectionData] = useState<SprintReflectionData>({
+  const [reflectionData, setReflectionData] = useState<PrivateReflectionData>({
     sprintId: "",
     sprintNumber: 0,
+    userId: "",
+    userEmail: "",
+    userName: "",
     personalGrowth: [],
     teamInsights: [],
     lessonsLearned: [],
     futureGoals: [],
+    managerFeedback: [],
     lastUpdated: "",
+    isPrivate: true,
   });
+  const [userRole, setUserRole] = useState<'admin' | 'manager' | 'user'>('user');
 
   const [activeTab, setActiveTab] = useState<TabKey>("personal");
+  const [showManagerFeedback, setShowManagerFeedback] = useState(false);
   const [newReflection, setNewReflection] = useState<NewReflectionForm>({
     content: "",
     category: "",
@@ -380,12 +390,18 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       .filter((user): user is MentionUser => user !== undefined);
   };
 
-  // Fetch sprint data
+  // Fetch sprint data and user role
   useEffect(() => {
     const fetchSprintData = async () => {
       if (!user || !board.id || !sprintNo) return;
 
       try {
+        // Get user's role in the board
+        const userCollaborator = board.collaborators.find(c => c.email === user.email);
+        if (userCollaborator) {
+          setUserRole(userCollaborator.role);
+        }
+
         const sprints = await sprintService.fetchBoardSprints(
           user.uid,
           board.id
@@ -393,25 +409,34 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         const targetSprint = sprints.find(
           (s) => s.sprintNumber === parseInt(sprintNo)
         );
+        
         if (targetSprint) {
           setSprint(targetSprint);
 
-          const sprintReflectionKey = `sprintReflection_${targetSprint.id}`;
-          const sprintReflectionData = board[sprintReflectionKey] as
-            | SprintReflectionData
-            | undefined;
+          // Fetch private reflection data
+          const privateReflection = await privateReflectionService.getPrivateReflection(
+            user.uid,
+            board.id,
+            targetSprint.id
+          );
 
-          if (sprintReflectionData) {
-            setReflectionData(sprintReflectionData);
+          if (privateReflection) {
+            setReflectionData(privateReflection);
           } else {
+            // Initialize new private reflection
             setReflectionData({
               sprintId: targetSprint.id,
               sprintNumber: targetSprint.sprintNumber,
+              userId: user.uid,
+              userEmail: user.email || "",
+              userName: user.displayName || user.email || "Current User",
               personalGrowth: [],
               teamInsights: [],
               lessonsLearned: [],
               futureGoals: [],
+              managerFeedback: [],
               lastUpdated: "",
+              isPrivate: true,
             });
           }
         }
@@ -429,39 +454,15 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
 
     setSaveStatus("saving");
     try {
-      const sprintReflectionKey = `sprintReflection_${sprint.id}`;
-      const updatedReflectionData = {
-        ...reflectionData,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      const cleanObject = (obj: any): any => {
-        if (obj === null || typeof obj !== "object") return obj;
-        if (Array.isArray(obj)) return obj.map(cleanObject);
-
-        const cleaned: any = {};
-        Object.keys(obj).forEach((key) => {
-          const value = obj[key];
-          if (value !== undefined) {
-            cleaned[key] = cleanObject(value);
-          }
-        });
-        return cleaned;
-      };
-
-      const updates: any = {
-        [sprintReflectionKey]: updatedReflectionData,
-      };
-
-      const cleanedUpdates = cleanObject(updates);
-
-      await dispatch(
-        updateBoard({
-          userId: user.uid,
-          boardId: board.id,
-          updates: cleanedUpdates,
-        })
-      ).unwrap();
+      await privateReflectionService.savePrivateReflection(
+        user.uid,
+        user.email || "",
+        user.displayName || user.email || "Current User",
+        board.id,
+        sprint.id,
+        sprint.sprintNumber,
+        reflectionData
+      );
 
       setSaveStatus("saved");
     } catch (error) {
@@ -508,7 +509,9 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         ? "teamInsights"
         : activeTab === "lessons"
         ? "lessonsLearned"
-        : "futureGoals";
+        : activeTab === "goals"
+        ? "futureGoals"
+        : "managerFeedback";
 
     setReflectionData({
       ...reflectionData,
@@ -750,6 +753,14 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       description:
         "Objectives, aspirations, and plans for upcoming sprints and beyond",
     },
+    ...(userRole === 'manager' || userRole === 'admin' ? [{
+      key: "feedback" as TabKey,
+      label: "Manager Feedback",
+      icon: Crown,
+      color: "purple",
+      description:
+        "Manager feedback and guidance for team member development",
+    }] : []),
   ];
 
   const getCurrentCategoryData = (): EnhancedReflectionItem[] => {
@@ -763,6 +774,8 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           return reflectionData.lessonsLearned || [];
         case "goals":
           return reflectionData.futureGoals || [];
+        case "feedback":
+          return reflectionData.managerFeedback || [];
         default:
           return [];
       }
@@ -910,6 +923,26 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           </div> */}
         </div>
 
+        {/* Privacy Notice */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-blue-800 mb-1">
+                Private Reflection
+              </h3>
+              <p className="text-sm text-blue-700">
+                {userRole === 'manager' || userRole === 'admin' 
+                  ? "As a manager, you can view and provide feedback on team member reflections. Your feedback is private between you and the team member."
+                  : "Your reflections are private and only visible to you and your manager. This is a safe space for honest self-reflection and growth."
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 text-center">
             <div className="text-2xl font-bold text-blue-600">
@@ -1016,7 +1049,9 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                     className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   >
                     <option value="self">Self Review</option>
-                    <option value="manager">Manager Review</option>
+                    {(userRole === 'manager' || userRole === 'admin') && (
+                      <option value="manager">Manager Review</option>
+                    )}
                   </select>
                 </div>
                 <div>

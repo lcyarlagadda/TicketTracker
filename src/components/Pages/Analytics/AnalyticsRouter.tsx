@@ -59,6 +59,20 @@ const SprintRouter: React.FC = () => {
     fetchSprintData();
   }, [user, boardId, sprintNo]);
 
+  // Calculate story points dynamically from tasks
+  const getTaskPoints = (task: any): number => {
+    // Use explicit story points if available
+    if (task.points !== null && task.points !== undefined) {
+      return task.points;
+    }
+    // Fallback to priority-based points
+    return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
+  };
+
+  // Get sprint tasks and calculate total story points
+  const sprintTasks = tasks.filter(task => task.sprintId === sprint?.id);
+  const totalStoryPoints = sprintTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+
   // Update active tab based on URL
   useEffect(() => {
     const pathSegments = location.pathname.split('/');
@@ -214,7 +228,7 @@ const SprintRouter: React.FC = () => {
                 <>
                   <div className="flex items-center gap-2">
                     <Target size={16} className="text-slate-400" />
-                    <span className="text-slate-600">{sprint.totalStoryPoints} story points</span>
+                    <span className="text-slate-600">{totalStoryPoints} story points</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} className="text-slate-400" />

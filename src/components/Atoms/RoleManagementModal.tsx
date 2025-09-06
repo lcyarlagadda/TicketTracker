@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Crown, UserCheck, User, Shield } from 'lucide-react';
 import { Board, Collaborator, BoardRole } from '../../store/types/types';
-import { getRoleDisplayName, getRoleDescription, canAssignRole, getUserRole, hasPermission } from '../../utils/permissions';
+import { getRoleDisplayName, getRoleDescription, canAssignRoleLegacy } from '../../utils/permissions';
 
 interface RoleManagementModalProps {
   isOpen: boolean;
@@ -27,7 +27,7 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
   const handleRoleChange = (collaborator: Collaborator, newRole: BoardRole) => {
     console.log('Role change clicked:', { collaborator: collaborator.name, newRole, currentUserEmail });
     
-    if (!canAssignRole(board, currentUserEmail, newRole)) {
+    if (!canAssignRoleLegacy(board, currentUserEmail, newRole)) {
       console.log('Cannot assign role - permission denied');
       return;
     }
@@ -140,7 +140,7 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
                     </div>
 
                     {/* Role Change Buttons */}
-                    {canAssignRole(board, currentUserEmail, 'admin') && (
+                    {canAssignRoleLegacy(board, currentUserEmail, 'admin') && (
                       <div className="flex gap-1">
                         {collaborator.email === board.createdBy.email ? (
                           <span className="px-3 py-1 text-xs font-medium text-slate-500 bg-slate-100 rounded-lg">
@@ -151,18 +151,18 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
                             <button
                               key={role}
                               onClick={() => handleRoleChange(collaborator, role)}
-                              disabled={collaborator.role === role || !canAssignRole(board, currentUserEmail, role)}
+                              disabled={collaborator.role === role || !canAssignRoleLegacy(board, currentUserEmail, role)}
                               className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
                                 collaborator.role === role
                                   ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                                  : canAssignRole(board, currentUserEmail, role)
+                                  : canAssignRoleLegacy(board, currentUserEmail, role)
                                   ? 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 hover:shadow-sm cursor-pointer'
                                   : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                               }`}
                               title={
                                 collaborator.role === role
                                   ? 'Current role'
-                                  : canAssignRole(board, currentUserEmail, role)
+                                  : canAssignRoleLegacy(board, currentUserEmail, role)
                                   ? `Change to ${getRoleDisplayName(role)}`
                                   : 'No permission to assign this role'
                               }
