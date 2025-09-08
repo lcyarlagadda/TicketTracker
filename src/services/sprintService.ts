@@ -294,10 +294,26 @@ class SprintService {
     sprintId: string
   ): Promise<Sprint> {
     try {
-      // Calculate actual velocity
+      // Get current sprint data
+      const sprint = await this.fetchSprint(userId, boardId, sprintId);
+      
+      // Calculate actual velocity and completion metrics
       const tasks = await this.fetchSprintTasks(userId, boardId, sprintId);
       const completedTasks = tasks.filter(t => t.status === 'done' || t.status === 'Done');
-      const actualVelocity = completedTasks.reduce((sum, task) => sum + (task.points !== null && task.points !== undefined ? task.points : 0), 0);
+      const incompleteTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'Done');
+      
+      // Helper function to get task points
+      const getTaskPoints = (task: any): number => {
+        if (task.points !== null && task.points !== undefined) {
+          return task.points;
+        }
+        return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
+      };
+      
+      // Calculate story points metrics
+      const completedStoryPoints = completedTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+      const spilloverStoryPoints = incompleteTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+      const initialStoryPoints = sprint.totalStoryPoints || (completedStoryPoints + spilloverStoryPoints);
       
       // Calculate completion rate
       const totalTasks = tasks.length;
@@ -305,9 +321,13 @@ class SprintService {
       
       const updates = {
         status: 'completed' as const,
-        actualVelocity,
+        actualVelocity: completedStoryPoints,
         completionRate: Math.round(completionRate * 10) / 10, // Round to 1 decimal place
-        completedAt: new Date().toISOString() // Use ISO string instead of serverTimestamp()
+        completedAt: new Date().toISOString(),
+        // New completion tracking fields
+        initialStoryPoints,
+        completedStoryPoints,
+        spilloverStoryPoints
       };
       
       await this.updateSprint(userId, boardId, sprintId, updates);

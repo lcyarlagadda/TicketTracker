@@ -152,6 +152,14 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
     try {
       const completedSprint = await sprintService.completeActiveSprint(user.uid, boardId, sprintId);
       setSprints(prev => prev.map(s => s.id === sprintId ? completedSprint : s));
+      
+      // Show success message or notification
+      console.log('Sprint completed successfully with metrics:', {
+        initialStoryPoints: completedSprint.initialStoryPoints,
+        completedStoryPoints: completedSprint.completedStoryPoints,
+        spilloverStoryPoints: completedSprint.spilloverStoryPoints,
+        completionRate: completedSprint.completionRate
+      });
     } catch (error) {
       console.error('Error completing sprint:', error);
     }
@@ -497,6 +505,44 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                     }
                   </div>
                 </div>
+
+                {/* Completion Metrics for Completed Sprints */}
+                {sprint.status === 'completed' && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <h5 className="text-sm font-semibold text-slate-700 mb-2">Sprint Completion Summary</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                      <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                        <div className="text-green-800 font-medium">Initial Expectations</div>
+                        <div className="text-green-600 text-lg font-bold">
+                          {sprint.initialStoryPoints || sprint.totalStoryPoints || 0} pts
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                        <div className="text-blue-800 font-medium">Completed</div>
+                        <div className="text-blue-600 text-lg font-bold">
+                          {sprint.completedStoryPoints || 0} pts
+                        </div>
+                      </div>
+                      <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                        <div className="text-orange-800 font-medium">Spillover</div>
+                        <div className="text-orange-600 text-lg font-bold">
+                          {sprint.spilloverStoryPoints || 0} pts
+                        </div>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                        <div className="text-purple-800 font-medium">Completion Rate</div>
+                        <div className="text-purple-600 text-lg font-bold">
+                          {sprint.completionRate || 0}%
+                        </div>
+                      </div>
+                    </div>
+                    {sprint.completedAt && (
+                      <div className="mt-2 text-xs text-slate-500">
+                        Completed on: {new Date(sprint.completedAt).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {(sprint.goals.length > 0 || ((sprint as any).risks && (sprint as any).risks.length > 0)) && (
                   <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">

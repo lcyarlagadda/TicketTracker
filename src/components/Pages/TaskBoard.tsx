@@ -667,7 +667,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       {/* Sidebar */}
       <aside
         className={`bg-white border-r-2 border-slate-200/60 shadow-xl transition-all duration-300 ${
-          sidebarCollapsed ? "w-18" : "w-72"
+          sidebarCollapsed ? "w-18" : "w-64"
         } flex-shrink-0 relative z-20`}
       >
         <div className="p-6 border-b border-slate-200/60 bg-gradient-to-r from-blue-600 to-blue-600">
@@ -794,32 +794,24 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                             key={idx}
                             className="group flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-200/60 hover:shadow-md transition-all duration-200"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-600 rounded-full flex items-center justify-center shadow-md">
-                                <span className="text-white text-sm font-bold">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-600 rounded-full flex items-center justify-center shadow-md">
+                                <span className="text-white text-xs font-bold">
                                   {c.name.charAt(0).toUpperCase()}
                                 </span>
                               </div>
-                              <div>
+                              <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-semibold text-slate-800 text-sm">
-                                    {c.name.length > 12
-                                      ? `${c.name.slice(0, 12)}...`
-                                      : c.name}
+                                  <p className="font-semibold text-slate-800 text-sm truncate">
+                                    {c.name}
                                   </p>
-                                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                    c.role === 'admin' 
-                                      ? 'bg-yellow-100 text-yellow-800' 
-                                      : c.role === 'manager'
-                                      ? 'bg-blue-100 text-blue-800'
-                                      : 'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {getRoleDisplayName(c.role)}
-                                  </span>
+                                  {/* <span className={`px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800`}>
+                                    {getRoleDisplayName(c.role).charAt(0).toUpperCase()}
+                                  </span> */}
                                 </div>
                                 <p className="text-xs text-slate-500">
-                                  {c.email.length > 12
-                                    ? `${c.email.slice(0, 12)}...`
+                                  {c.email.length > 10
+                                    ? `${c.email.slice(0, 10)}...`
                                     : c.email}
                                 </p>
                               </div>
@@ -880,8 +872,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
         <div className="relative z-10 h-full flex flex-col">
           {/* Header with Sprint Info */}
-          <div className="flex-shrink-0 p-6 pb-4">
-            <div className="flex justify-between items-center mb-6">
+          <div className="flex-shrink-0 p-4 pb-3">
+            <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-4">
                 <div>
                   <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
@@ -956,7 +948,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
           {/* Kanban Board Container */}
           <div className="flex-1 min-h-0">
-            <div className="h-full overflow-auto px-6">
+            <div className="h-full overflow-auto px-4">
               <DragDropContext onDragEnd={handleDragEnd}>
                 <div
                   className="flex gap-4 pb-6"
@@ -969,7 +961,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                       style={{ width: "280px" }}
                     >
                       {/* Column Header */}
-                      <div className="p-4 border-b border-slate-200/60">
+                      <div className="p-3 border-b border-slate-200/60">
                         <div className="flex justify-between items-center">
                           {editingStatus === status ? (
                             <input

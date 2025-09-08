@@ -89,18 +89,18 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
         }}
       >
         <div 
-          className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl relative z-[10001] animate-in zoom-in-95 duration-300"
+          className="bg-white rounded-2xl max-w-2xl w-full max-h-[60vh] overflow-hidden shadow-2xl relative z-[10001] animate-in zoom-in-95 duration-300"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-200">
+          <div className="flex items-center justify-between p-3 border-b border-slate-200">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-                <Shield size={20} className="text-white" />
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                <Shield size={16} className="text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Role Management</h2>
-                <p className="text-sm text-slate-600">Manage team member permissions</p>
+                <h2 className="text-lg font-bold text-slate-900">Role Management</h2>
+                <p className="text-xs text-slate-600">Manage team member permissions</p>
               </div>
             </div>
             <button
@@ -112,23 +112,27 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
           </div>
 
           {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+          <div className="p-4 overflow-y-auto max-h-[calc(60vh-120px)]">
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {board.collaborators.map((collaborator) => (
                 <div
                   key={collaborator.email}
-                  className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200"
+                  className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold text-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                      <span className="text-white font-bold text-xs">
                         {collaborator.name.charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{collaborator.name}</h3>
-                      <p className="text-sm text-slate-600">{collaborator.email}</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-slate-900 truncate">{collaborator.name}</h3>
+                      <p className="text-sm text-slate-600">
+                        {collaborator.email.length > 20
+                          ? `${collaborator.email.slice(0, 20)}...`
+                          : collaborator.email}
+                      </p>
                     </div>
                   </div>
 
@@ -205,15 +209,6 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 p-6 border-t border-slate-200">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all duration-200"
-            >
-              Close
-            </button>
-          </div>
         </div>
       </div>
 

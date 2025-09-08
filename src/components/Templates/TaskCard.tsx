@@ -194,20 +194,20 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
           >
             <div className={`h-1 bg-gradient-to-r ${config.gradient}`}></div>
             
-            <div className="p-4">
+            <div className="p-3">
               {/* Header with Task ID and Actions */}
-              <div className="flex justify-between items-start mb-3">
+              <div className="flex justify-between items-start mb-2">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleCopyTaskId}
-                    className="flex items-center gap-1 px-2 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono text-slate-600 transition-colors"
+                    className="flex items-center gap-1 px-1.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono text-slate-600 transition-colors"
                     title="Copy Task ID"
                   >
                     {copied ? <Check size={12} /> : <Copy size={12} />}
                     {task.id.slice(-8)}
                   </button>
-                  <div className={`px-2 py-1 rounded-lg ${typeConfig.bg} ${typeConfig.border} border`}>
-                    <span className={`text-xs font-semibold ${typeConfig.text}`}>
+                  <div className={`px-1.5 py-0.5 rounded-lg ${typeConfig.bg} ${typeConfig.border} border`}>
+                    <span className={`text-xs font-medium ${typeConfig.text}`}>
                       {typeConfig.label}
                     </span>
                   </div>
@@ -216,14 +216,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
                   <button
                     onClick={handleEditClick}
-                    className="p-1.5 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600 transition-colors"
+                    className="p-1 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600 transition-colors"
                     title="Edit Task"
                   >
                     <Pencil size={14} />
                   </button>
                   <button
                     onClick={handleDeleteClick}
-                    className="p-1.5 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
+                    className="p-1 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
                     title="Delete Task"
                   >
                     <Trash2 size={14} />
@@ -232,14 +232,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
               </div>
 
               {/* Task Title */}
-              <h4 className="font-bold text-slate-800 leading-tight mb-3 group-hover:text-slate-900 transition-colors">
+              <h4 className="font-semibold text-slate-800 leading-tight mb-2 group-hover:text-slate-900 transition-colors text-sm">
                 {task.title}
               </h4>
 
               {childTasks.length > 0 && (
-                <div className="mb-3">
+                <div className="mb-2">
                   <div 
-                    className="flex items-center justify-between p-2 bg-emerald-50 rounded-lg cursor-pointer hover:bg-emerald-100 transition-colors"
+                    className="flex items-center justify-between p-1.5 bg-emerald-50 rounded-lg cursor-pointer hover:bg-emerald-100 transition-colors"
                     onClick={handleSubtaskToggle}
                   >
                     <div className="flex items-center gap-2">
@@ -247,14 +247,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                         {showSubtasks ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         <CheckSquare size={14} className="ml-1" />
                       </div>
-                      <span className="text-sm font-medium text-emerald-700">
+                      <span className="text-xs font-medium text-emerald-700">
                         Subtasks ({progress.completed}/{progress.total})
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-16 bg-emerald-200 rounded-full h-1.5">
+                      <div className="w-12 bg-emerald-200 rounded-full h-1">
                         <div 
-                          className="h-1.5 bg-emerald-600 rounded-full transition-all duration-300"
+                          className="h-1 bg-emerald-600 rounded-full transition-all duration-300"
                           style={{ width: `${progress.percentage}%` }}
                         ></div>
                       </div>
@@ -265,9 +265,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                   </div>
 
                   {showSubtasks && (
-                    <div className="mt-2 space-y-1 pl-2">
+                    <div className="mt-1.5 space-y-1 pl-1.5">
                       {childTasks.map((subtask) => (
-                        <div key={subtask.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+                        <div key={subtask.id} className="flex items-center gap-1.5 p-1.5 bg-slate-50 rounded-lg">
                           <div className="text-emerald-500">
                             {subtask.status === 'done' ? (
                               <CheckSquare size={12} />
@@ -298,51 +298,51 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 mb-3 p-2 bg-slate-50 rounded-lg">
-                <UserCircle size={16} className="text-slate-500" />
+              <div className="flex items-center gap-2 mb-2 p-1.5 bg-slate-50 rounded-lg">
+                <UserCircle size={14} className="text-slate-500" />
                 {task.assignedTo ? (
                   <div>
                     <p className="text-xs text-slate-500">Assigned to</p>
-                    <p className="text-sm text-slate-700 font-medium">
+                    <p className="text-xs text-slate-700 font-medium">
                       {task.assignedTo.name}
                     </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500 font-medium">Unassigned</p>
+                  <p className="text-xs text-slate-500 font-medium">Unassigned</p>
                 )}
               </div>
 
-              <div className="flex justify-between items-center mb-3">
-                <div className={`px-2 py-1 rounded-lg ${config.bg} ${config.border} border`}>
-                  <span className={`text-xs font-semibold ${config.text}`}>
+              <div className="flex justify-between items-center mb-2">
+                <div className={`px-1.5 py-0.5 rounded-lg ${config.bg} ${config.border} border`}>
+                  <span className={`text-xs font-medium ${config.text}`}>
                     {task.priority}
                   </span>
                 </div>
                 
                 {task.dueDate && (
-                  <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium ${
                     isOverdue 
                       ? 'bg-red-50 border border-red-200 text-red-700' 
                       : 'bg-blue-50 border border-blue-200 text-blue-700'
                   }`}>
-                    <Calendar size={12} />
+                    <Calendar size={10} />
                     {new Date(task.dueDate).toLocaleDateString()}
                   </div>
                 )}
               </div>
               
               {task.epics?.length > 0 && (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-0.5">
                   {task.epics.slice(0, 2).map((epic, idx) => (
                     <span
                       key={idx}
-                      className="text-xs text-purple-600 bg-purple-100 rounded-full px-2 py-1 border border-purple-200"
+                      className="text-xs text-purple-600 bg-purple-100 rounded-full px-1.5 py-0.5 border border-purple-200"
                     >
                       #{epic}
                     </span>
                   ))}
                   {task.epics.length > 2 && (
-                    <span className="text-xs text-slate-500 bg-slate-50 rounded-full px-2 py-1">
+                    <span className="text-xs text-slate-500 bg-slate-50 rounded-full px-1.5 py-0.5">
                       +{task.epics.length - 2}
                     </span>
                   )}

@@ -96,9 +96,13 @@ export interface Sprint {
   burndownData?: SprintBurndownData[];
   taskIds: string[]; // tasks assigned to this sprint
   risks?: string[];
+  // Completion tracking fields
+  initialStoryPoints?: number; // Story points planned at sprint start
+  completedStoryPoints?: number; // Story points actually completed
+  spilloverStoryPoints?: number; // Story points moved to next sprint
+  completionRate?: number; // Percentage of tasks completed
+  completedAt?: string; // When sprint was completed
   teamCapacityPerWeek?: number;
-  completionRate?: number;
-  completedAt?: string;
 }
 
 export interface SprintBurndownData {

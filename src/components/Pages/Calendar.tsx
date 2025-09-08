@@ -41,8 +41,11 @@ const CompactCalendar: React.FC<CompactCalendarProps> = ({ boards, onClose }) =>
           const tasks = await taskService.fetchBoardTasks(user.uid, board.id);
           
           for (const task of tasks) {
-            // Add main task if it has a due date
-            if (task.dueDate) {
+            // Only add tasks assigned to the current user
+            const isAssignedToUser = task.assignedTo && task.assignedTo.email === user.email;
+            
+            // Add main task if it has a due date and is assigned to current user
+            if (task.dueDate && isAssignedToUser) {
               calendarTasksData.push({
                 ...task,
                 boardTitle: board.title,
@@ -50,21 +53,25 @@ const CompactCalendar: React.FC<CompactCalendarProps> = ({ boards, onClose }) =>
               });
             }
 
-            // Fetch and add subtasks with due dates
-            try {
-              const subtasks = await taskService.fetchChildTasks(user.uid, board.id, task.id);
-              for (const subtask of subtasks) {
-                if (subtask.dueDate) {
-                  calendarTasksData.push({
-                    ...subtask,
-                    boardTitle: board.title,
-                    isSubtask: true,
-                    parentTaskTitle: task.title
-                  });
+            // Fetch and add subtasks with due dates (only if parent task is assigned to user)
+            if (isAssignedToUser) {
+              try {
+                const subtasks = await taskService.fetchChildTasks(user.uid, board.id, task.id);
+                for (const subtask of subtasks) {
+                  // Only add subtasks assigned to the current user
+                  const isSubtaskAssignedToUser = subtask.assignedTo && subtask.assignedTo.email === user.email;
+                  if (subtask.dueDate && isSubtaskAssignedToUser) {
+                    calendarTasksData.push({
+                      ...subtask,
+                      boardTitle: board.title,
+                      isSubtask: true,
+                      parentTaskTitle: task.title
+                    });
+                  }
                 }
+              } catch (error) {
+                console.error('Error fetching subtasks:', error);
               }
-            } catch (error) {
-              console.error('Error fetching subtasks:', error);
             }
           }
         }
@@ -225,7 +232,7 @@ const CompactCalendar: React.FC<CompactCalendarProps> = ({ boards, onClose }) =>
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Calendar size={16} className="text-slate-600" />
-            <span className="font-medium text-slate-800 text-sm">Task Calendar</span>
+            <span className="font-medium text-slate-800 text-sm">My Tasks Calendar</span>
           </div>
           <button
             onClick={onClose}
@@ -281,7 +288,15 @@ const CompactCalendar: React.FC<CompactCalendarProps> = ({ boards, onClose }) =>
         </div>
 
         {/* Calendar Grid */}
-        {renderCompactCalendar()}
+        {calendarTasks.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <Calendar size={32} className="mx-auto mb-2 text-slate-300" />
+            <p className="text-sm">No tasks assigned to you with due dates</p>
+            <p className="text-xs text-slate-400 mt-1">Tasks assigned to you will appear here</p>
+          </div>
+        ) : (
+          renderCompactCalendar()
+        )}
       </div>
     </div>
   );

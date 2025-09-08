@@ -123,7 +123,7 @@ const BoardList: React.FC = () => {
         {/* Main Content */}
         <div className="flex gap-6">
           {/* Left Sidebar - Task Stats */}
-          <div className="w-72 flex-shrink-0">
+          <div className="w-64 flex-shrink-0">
             {tasksLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
