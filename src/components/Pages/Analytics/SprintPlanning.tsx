@@ -197,14 +197,17 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   };
 
   const navigateToSprintAnalytics = (sprintNumber: number) => {
+    console.log(`Navigating to analytics for sprint ${sprintNumber}, board ${boardId}`);
     navigate(`/board/${boardId}/${sprintNumber}/analytics`);
   };
 
   const navigateToSprintRetro = (sprintNumber: number) => {
+    console.log(`Navigating to retro for sprint ${sprintNumber}, board ${boardId}`);
     navigate(`/board/${boardId}/${sprintNumber}/retro`);
   };
 
   const navigateToSprintReflection = (sprintNumber: number) => {
+    console.log(`Navigating to reflection for sprint ${sprintNumber}, board ${boardId}`);
     navigate(`/board/${boardId}/${sprintNumber}/reflection`);
   };
 
@@ -269,7 +272,10 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                   </button>
                 )}
                 <button
-                  onClick={() => navigateToSprintAnalytics(activeSprint.sprintNumber)}
+                  onClick={() => {
+                    console.log(`Active sprint analytics button clicked for sprint: ${activeSprint.name} (Sprint #${activeSprint.sprintNumber})`);
+                    navigateToSprintAnalytics(activeSprint.sprintNumber);
+                  }}
                   className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                 >
                   <BarChart3 size={14} />
@@ -288,7 +294,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-700">{realTimeStoryPoints}</div>
-                <div className="text-sm text-green-600">Story Points</div>
+                <div className="text-sm text-green-600">Current Story Points</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-700">{activeSprint.duration}</div>
@@ -424,21 +430,30 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                     {(sprint.status === 'active' || sprint.status === 'completed') && (
                       <>
                         <button
-                          onClick={() => navigateToSprintAnalytics(sprint.sprintNumber)}
+                          onClick={() => {
+                            console.log(`Analytics button clicked for sprint: ${sprint.name} (Sprint #${sprint.sprintNumber})`);
+                            navigateToSprintAnalytics(sprint.sprintNumber);
+                          }}
                           className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                         >
                           <BarChart3 size={14} />
                           Analytics
                         </button>
                         <button
-                          onClick={() => navigateToSprintRetro(sprint.sprintNumber)}
+                          onClick={() => {
+                            console.log(`Retro button clicked for sprint: ${sprint.name} (Sprint #${sprint.sprintNumber})`);
+                            navigateToSprintRetro(sprint.sprintNumber);
+                          }}
                           className="flex items-center gap-1 px-3 py-1 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
                         >
                           <MessageSquare size={14} />
                           Retro
                         </button>
                         <button
-                          onClick={() => navigateToSprintReflection(sprint.sprintNumber)}
+                          onClick={() => {
+                            console.log(`Reflection button clicked for sprint: ${sprint.name} (Sprint #${sprint.sprintNumber})`);
+                            navigateToSprintReflection(sprint.sprintNumber);
+                          }}
                           className="flex items-center gap-1 px-3 py-1 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
                         >
                           <BookOpen size={14} />
@@ -469,10 +484,18 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                 
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-4 text-sm text-slate-600">
                   <div>
-                    <span className="font-medium">Points:</span> {
+                    <span className="font-medium">
+                      {sprint.status === 'completed' ? 'Initial Points:' : 'Current Points:'}
+                    </span> {
                       (() => {
-                        const realTimeData = sprintRealTimeData.find(data => data.sprintId === sprint.id);
-                        return realTimeData ? realTimeData.realTimeStoryPoints : 0;
+                        if (sprint.status === 'completed') {
+                          // For completed sprints, show initial expectations
+                          return sprint.initialStoryPoints || sprint.totalStoryPoints || 0;
+                        } else {
+                          // For active/planning sprints, show current real-time points
+                          const realTimeData = sprintRealTimeData.find(data => data.sprintId === sprint.id);
+                          return realTimeData ? realTimeData.realTimeStoryPoints : 0;
+                        }
                       })()
                     }
                   </div>

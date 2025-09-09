@@ -11,7 +11,6 @@ import {
   User,
   Crown,
   Star,
-  TrendingUp,
   MessageCircle,
   Heart,
   Send,
@@ -19,9 +18,8 @@ import {
   AtSign,
   Shield,
 } from "lucide-react";
-import { useAppDispatch, useAppSelector } from "../../../hooks/redux";
+import { useAppSelector } from "../../../hooks/redux";
 import { notificationService } from "../../../services/notificationService";
-import { updateBoard } from "../../../store/slices/boardSlice";
 import {
   Task,
   Board,
@@ -315,7 +313,6 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   board,
   tasks,
 }) => {
-  const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const { sprintNo } = useParams();
 
@@ -335,9 +332,10 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     isPrivate: true,
   });
   const [userRole, setUserRole] = useState<'admin' | 'manager' | 'user'>('user');
+  const [selectedTeamMember, setSelectedTeamMember] = useState<string>('');
+  const [teamReflections, setTeamReflections] = useState<{[userId: string]: PrivateReflectionData}>({});
 
   const [activeTab, setActiveTab] = useState<TabKey>("personal");
-  const [showManagerFeedback, setShowManagerFeedback] = useState(false);
   const [newReflection, setNewReflection] = useState<NewReflectionForm>({
     content: "",
     category: "",
@@ -354,9 +352,6 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   );
   const [showComments, setShowComments] = useState<{ [key: number]: boolean }>(
     {}
-  );
-  const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">(
-    "saved"
   );
 
   // Task modal state
@@ -388,6 +383,37 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       .map(match => match.slice(1)) // Remove @ symbol
       .map(username => mentionUsers.find(user => user.name === username))
       .filter((user): user is MentionUser => user !== undefined);
+  };
+
+  // Fetch team reflections for managers
+  const fetchTeamReflections = async (sprintId: string) => {
+    if (!user || !board.id || (userRole !== 'manager' && userRole !== 'admin')) return;
+
+    try {
+      const teamReflectionsData: {[userId: string]: PrivateReflectionData} = {};
+      
+      // Fetch reflections for all team members
+      for (const collaborator of board.collaborators) {
+        if (collaborator.email !== user.email) {
+          try {
+            const reflection = await privateReflectionService.getPrivateReflection(
+              collaborator.email, // Using email as userId for now
+              board.id,
+              sprintId
+            );
+            if (reflection) {
+              teamReflectionsData[collaborator.email] = reflection;
+            }
+          } catch (error) {
+            console.log(`No reflection found for ${collaborator.name}`);
+          }
+        }
+      }
+      
+      setTeamReflections(teamReflectionsData);
+    } catch (error) {
+      console.error("Error fetching team reflections:", error);
+    }
   };
 
   // Fetch sprint data and user role
@@ -439,6 +465,11 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
               isPrivate: true,
             });
           }
+
+          // Fetch team reflections if user is manager/admin
+          if (userRole === 'manager' || userRole === 'admin') {
+            await fetchTeamReflections(targetSprint.id);
+          }
         }
       } catch (error) {
         console.error("Error fetching sprint data:", error);
@@ -446,13 +477,12 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     };
 
     fetchSprintData();
-  }, [user, board.id, sprintNo, board]);
+  }, [user, board.id, sprintNo, board, userRole]);
 
   // Auto-save reflection data
   const saveReflectionData = async (): Promise<void> => {
     if (!user || !board.id || !sprint) return;
 
-    setSaveStatus("saving");
     try {
       await privateReflectionService.savePrivateReflection(
         user.uid,
@@ -463,11 +493,8 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         sprint.sprintNumber,
         reflectionData
       );
-
-      setSaveStatus("saved");
     } catch (error) {
       console.error("Error saving reflection data:", error);
-      setSaveStatus("error");
     }
   };
 
@@ -496,7 +523,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       authorEmail: user.email || "",
       createdAt: new Date().toISOString(),
       tags: [],
-      reviewType: newReflection.reviewType,
+      reviewType: selectedTeamMember ? "manager" : newReflection.reviewType,
       rating: newReflection.rating,
       comments: [],
       likes: [],
@@ -513,10 +540,37 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         ? "futureGoals"
         : "managerFeedback";
 
-    setReflectionData({
-      ...reflectionData,
-      [category]: [...(reflectionData[category] || []), reflection],
-    });
+    // If viewing team member reflections, save to their data
+    if (selectedTeamMember && (userRole === 'manager' || userRole === 'admin')) {
+      const teamMemberData = teamReflections[selectedTeamMember];
+      if (teamMemberData) {
+        const updatedTeamMemberData = {
+          ...teamMemberData,
+          [category]: [...(teamMemberData[category] || []), reflection],
+        };
+        setTeamReflections({
+          ...teamReflections,
+          [selectedTeamMember]: updatedTeamMemberData
+        });
+        
+        // Save to the team member's reflection data
+        privateReflectionService.savePrivateReflection(
+          selectedTeamMember,
+          teamMemberData.userEmail,
+          teamMemberData.userName,
+          board.id,
+          sprint?.id || "",
+          sprint?.sprintNumber || 0,
+          updatedTeamMemberData
+        );
+      }
+    } else {
+      // Save to current user's reflection data
+      setReflectionData({
+        ...reflectionData,
+        [category]: [...(reflectionData[category] || []), reflection],
+      });
+    }
 
     setNewReflection({
       content: "",
@@ -764,18 +818,23 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   ];
 
   const getCurrentCategoryData = (): EnhancedReflectionItem[] => {
+    // For managers, show selected team member's data or current user's data
+    const currentData = (userRole === 'manager' || userRole === 'admin') && selectedTeamMember 
+      ? teamReflections[selectedTeamMember] 
+      : reflectionData;
+
     const data = (() => {
       switch (activeTab) {
         case "personal":
-          return reflectionData.personalGrowth || [];
+          return currentData?.personalGrowth || [];
         case "team":
-          return reflectionData.teamInsights || [];
+          return currentData?.teamInsights || [];
         case "lessons":
-          return reflectionData.lessonsLearned || [];
+          return currentData?.lessonsLearned || [];
         case "goals":
-          return reflectionData.futureGoals || [];
+          return currentData?.futureGoals || [];
         case "feedback":
-          return reflectionData.managerFeedback || [];
+          return currentData?.managerFeedback || [];
         default:
           return [];
       }
@@ -833,13 +892,21 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     ));
   };
 
-  // Calculate summary statistics
+  // Calculate summary statistics for current data being viewed
+  const getCurrentData = () => {
+    return (userRole === 'manager' || userRole === 'admin') && selectedTeamMember 
+      ? teamReflections[selectedTeamMember] 
+      : reflectionData;
+  };
+
+  const currentData = getCurrentData();
+  
   const summaryStats = {
-    totalReflections: Object.values(reflectionData).reduce(
+    totalReflections: Object.values(currentData || {}).reduce(
       (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
       0
     ),
-    selfReviews: Object.values(reflectionData).reduce(
+    selfReviews: Object.values(currentData || {}).reduce(
       (sum, arr) =>
         sum +
         (Array.isArray(arr)
@@ -847,7 +914,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           : 0),
       0
     ),
-    managerReviews: Object.values(reflectionData).reduce(
+    managerReviews: Object.values(currentData || {}).reduce(
       (sum, arr) =>
         sum +
         (Array.isArray(arr)
@@ -857,10 +924,10 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     ),
     avgRating: (() => {
       const allItems: EnhancedReflectionItem[] = [
-        ...(reflectionData.personalGrowth || []),
-        ...(reflectionData.teamInsights || []),
-        ...(reflectionData.lessonsLearned || []),
-        ...(reflectionData.futureGoals || []),
+        ...(currentData?.personalGrowth || []),
+        ...(currentData?.teamInsights || []),
+        ...(currentData?.lessonsLearned || []),
+        ...(currentData?.futureGoals || []),
       ];
       const ratedItems = allItems.filter((item) => item.rating);
       return ratedItems.length > 0
@@ -897,13 +964,57 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           <div>
             <h2 className="text-2xl font-bold text-slate-800">
               {sprint.name} - Reflection
+              {(userRole === 'manager' || userRole === 'admin') && selectedTeamMember && (
+                <span className="text-lg font-normal text-slate-600 ml-2">
+                  - {board.collaborators.find(c => c.email === selectedTeamMember)?.name}
+                </span>
+              )}
             </h2>
             <p className="text-slate-600">
-              Comprehensive self and manager review covering personal growth,
-              team insights, and future planning
+              {selectedTeamMember 
+                ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s reflections`
+                : "Comprehensive self and manager review covering personal growth, team insights, and future planning"
+              }
             </p>
           </div>
         </div>
+
+        {/* Team Member Selector for Managers */}
+        {(userRole === 'manager' || userRole === 'admin') && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <Crown className="w-5 h-5 text-purple-600" />
+              <h3 className="text-sm font-semibold text-purple-800">
+                Manager View
+              </h3>
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium text-purple-700">
+                View reflections for:
+              </label>
+              <select
+                value={selectedTeamMember}
+                onChange={(e) => setSelectedTeamMember(e.target.value)}
+                className="px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm bg-white"
+              >
+                <option value="">My Reflections</option>
+                {board.collaborators
+                  .filter(collab => collab.email !== user?.email)
+                  .map(collab => (
+                    <option key={collab.email} value={collab.email}>
+                      {collab.name} ({collab.email})
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <p className="text-xs text-purple-600 mt-2">
+              {selectedTeamMember 
+                ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s reflections`
+                : "Viewing your own reflections"
+              }
+            </p>
+          </div>
+        )}
 
         {/* Privacy Notice */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
@@ -1003,10 +1114,11 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
             </select>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              disabled={!!selectedTeamMember && (userRole !== 'manager' && userRole !== 'admin')}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
               {showAddForm ? <X size={16} /> : <Plus size={16} />}
-              {showAddForm ? "Cancel" : "Add Reflection"}
+              {showAddForm ? "Cancel" : selectedTeamMember ? "Add Manager Feedback" : "Add Reflection"}
             </button>
           </div>
         </div>
@@ -1021,14 +1133,15 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                     Review Type
                   </label>
                   <select
-                    value={newReflection.reviewType}
+                    value={selectedTeamMember ? "manager" : newReflection.reviewType}
                     onChange={(e) =>
                       setNewReflection({
                         ...newReflection,
                         reviewType: e.target.value as "self" | "manager",
                       })
                     }
-                    className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                    disabled={!!selectedTeamMember}
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-slate-100"
                   >
                     <option value="self">Self Review</option>
                     {(userRole === 'manager' || userRole === 'admin') && (

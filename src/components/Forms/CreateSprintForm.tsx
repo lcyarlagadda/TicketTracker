@@ -76,9 +76,11 @@ const SprintModal: React.FC<SprintModalProps> = ({
         endDate: sprint.endDate,
         holidays: sprint.holidays
       });
-      setSelectedTasks(sprint.taskIds || []);
+      // Update selected tasks to reflect current sprint tasks
+      const currentSprintTasks = tasks.filter(task => task.sprintId === sprint.id);
+      setSelectedTasks(currentSprintTasks.map(task => task.id));
     }
-  }, [sprint]);
+  }, [sprint, tasks]);
 
   // Get unassigned tasks (only for new sprints or planning sprints)
   const unassignedTasks = tasks.filter(task => 

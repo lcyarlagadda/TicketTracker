@@ -803,10 +803,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-semibold text-slate-800 text-sm truncate">
-                                    {c.name}
+                                    {c.name.length > 10
+                                    ? `${c.name.slice(0, 10)}...`
+                                    : c.name}
                                   </p>
                                   {/* <span className={`px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800`}>
-                                    {getRoleDisplayName(c.role).charAt(0).toUpperCase()}
+                                    {getRoleDisplayName(c.role)}
                                   </span> */}
                                 </div>
                                 <p className="text-xs text-slate-500">

@@ -157,14 +157,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
   const currentSprint = sprintId ? sprints.find(s => s.id === sprintId) : null;
   const activeSprints = sprints.filter(s => s.status === 'active' || s.status === 'planning');
 
-  // Sprint options
-  const sprintOptions = [
-    { value: "", label: "Backlog" },
-    ...activeSprints.map(s => ({
-      value: s.id,
-      label: `${s.name}`
-    }))
-  ];
+  // Sprint options - only show active sprints if they exist
+  const sprintOptions = activeSprints.map(s => ({
+    value: s.id,
+    label: `${s.name}`
+  }));
 
   const taskTypeConfig = {
     epic: { 
@@ -204,9 +201,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       label: 'Subtask'
     },
     poc: { 
-      bg: 'bg-purple-100',
-      text: 'text-purple-700',
-      border: 'border-purple-200',
+      bg: 'bg-yellow-100',
+      text: 'text-yellow-700',
+      border: 'border-yellow-200',
       label: 'POC'
     },
   };
@@ -325,7 +322,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         progressLog: [
           {
             type: "created" as const,
-            desc: "Subtask created",
+            desc: `Subtask ${newChildTask.title.trim()} added`,
             timestamp: Timestamp.now(),
             user: user.displayName || user.email,
           },
@@ -559,7 +556,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         
         newLogEntries.push({
           type: "assignment-change" as const,
-          desc: `Reassigned from ${task.assignedTo?.name || "Unassigned"} to ${
+          desc: `Assigned from ${task.assignedTo?.name || "Unassigned"} to ${
             assignedTo || "Unassigned"
           }`,
           timestamp: Timestamp.now(),
@@ -912,19 +909,25 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
               </div>
               <h3 className="font-semibold text-slate-800">Sprint Assignment</h3>
             </div>
-            <CustomDropdown
-              options={sprintOptions.map(opt => opt.label)}
-              selected={sprintId 
-                ? sprintOptions.find(opt => opt.value === sprintId)?.label || ""
-                : "Backlog"
-              }
-              setSelected={(label) => {
-                const option = sprintOptions.find(opt => opt.label === label);
-                setSprintId(option?.value || "");
-              }}
-              placeholder="Select sprint"
-              className="w-full"
-            />
+            {activeSprints.length > 0 ? (
+              <CustomDropdown
+                options={sprintOptions.map(opt => opt.label)}
+                selected={sprintId 
+                  ? sprintOptions.find(opt => opt.value === sprintId)?.label || ""
+                  : ""
+                }
+                setSelected={(label) => {
+                  const option = sprintOptions.find(opt => opt.label === label);
+                  setSprintId(option?.value || "");
+                }}
+                placeholder="Select sprint"
+                className="w-full"
+              />
+            ) : (
+              <div className="w-full px-3 py-2 bg-slate-100 border-2 border-slate-200 rounded-xl text-slate-500 text-sm">
+                No active sprints available
+              </div>
+            )}
           </div>
 
           {/* Assignment and Due Date */}
