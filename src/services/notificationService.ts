@@ -29,10 +29,10 @@ class NotificationService {
         templateId,
         templateParams
       );
-      console.log('Email sent successfully:', result);
+      // Email sent successfully
       return true;
     } catch (error) {
-      console.error('Failed to send email:', error);
+      // Error('Failed to send email:', error);
       return false;
     }
   }
@@ -57,7 +57,7 @@ class NotificationService {
 
     // Send email in background without blocking UI
     this.sendEmail('template_collaborator_ad', templateParams).catch(error => {
-      console.error('Background email send failed:', error);
+      // Error('Background email send failed:', error);
     });
   }
 
@@ -85,11 +85,11 @@ class NotificationService {
       subject: `New task assigned: ${data.taskTitle}`,
     };
 
-    console.log('templateParams', templateParams);
+    // Template parameters prepared
 
     // Send email in background without blocking UI
     this.sendEmail('template_task_assigned', templateParams).catch(error => {
-      console.error('Background email send failed:', error);
+      // Error('Background email send failed:', error);
     });
   }
 
@@ -117,7 +117,7 @@ class NotificationService {
 
     // Send email in background without blocking UI -- commented for now as there are no credits
     // this.sendEmail('template_mentioned', templateParams).catch(error => {
-    //   console.error('Background email send failed:', error);
+    //   // Error('Background email send failed:', error);
     // });
   }
 
@@ -157,7 +157,7 @@ class NotificationService {
 
     // Send email in background without blocking UI  -- commented for now as there are no credits
     // this.sendEmail('template_task_updated', templateParams).catch(error => {
-    //   console.error('Background email send failed:', error);
+    //   // Error('Background email send failed:', error);
     // });
   }
 }

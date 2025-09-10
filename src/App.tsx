@@ -10,6 +10,7 @@ import BoardList from './components/Pages/BoardList';
 import TaskBoard from './components/Pages/TaskBoard';
 import AnalyticsRouter from './components/Pages/Analytics/AnalyticsRouter';
 import SprintPlanning from './components/Pages/Analytics/SprintPlanning';
+import ResponsiveWrapper from './components/ResponsiveWrapper';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
@@ -49,7 +50,7 @@ function SprintPlanningWrapper() {
     return <Navigate to="/boards" />;
   }
 
-  console.log("Rendering SprintPlanningWrapper with boardId:", boardId);
+  // Log("Rendering SprintPlanningWrapper with boardId:", boardId);
 
   return <SprintPlanning boardId={boardId} />;
 }
@@ -149,7 +150,9 @@ function AppContent() {
 export default function App() {
   return (
     <Provider store={store}>
-      <AppContent />
+      <ResponsiveWrapper>
+        <AppContent />
+      </ResponsiveWrapper>
     </Provider>
   );
 }

@@ -39,7 +39,7 @@ class TaskService {
         ...doc.data() 
       } as Task));
     } catch (error) {
-      console.error('Error fetching tasks:', error);
+      // Error('Error fetching tasks:', error);
       throw error;
     }
   }
@@ -65,7 +65,7 @@ class TaskService {
         ...doc.data() 
       } as Task));
     } catch (error) {
-      console.error('Error fetching child tasks:', error);
+      // Error('Error fetching child tasks:', error);
       throw error;
     }
   }
@@ -130,19 +130,19 @@ class TaskService {
       const newTask = {
         ...taskData,
         boardId,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         progressLog: [
           {
             desc: taskData.parentTaskId ? 'Child task created' : 'Task created',
             type: 'created' as const,
             to: taskData.status,
-            timestamp: Timestamp.now(),
+            timestamp: new Date().toISOString(),
             user: taskData.createdBy.name,
           },
         ],
       };
 
-      console.log("Creating task with data:", newTask);
+      // Creating task with data
 
       const docRef = await addDoc(
         collection(db, 'tasks'),
@@ -151,7 +151,7 @@ class TaskService {
 
       return { id: docRef.id, ...newTask } as Task;
     } catch (error) {
-      console.error('Error creating task:', error);
+      // Error('Error creating task:', error);
       throw error;
     }
   }
@@ -173,7 +173,7 @@ class TaskService {
       const taskRef = doc(db, 'tasks', taskId);
       await updateDoc(taskRef, updates);
     } catch (error) {
-      console.error('Error updating task:', error);
+      // Error('Error updating task:', error);
       throw error;
     }
   }
@@ -189,12 +189,12 @@ class TaskService {
 
       await deleteDoc(doc(db, 'tasks', taskId));
     } catch (error) {
-      console.error('Error deleting task:', error);
+      // Error('Error deleting task:', error);
       throw error;
     }
   }
 
-  // Upload task files
+  // Upload task files with retry logic for CORS issues
   async uploadTaskFiles(
     userId: string,
     boardId: string,
@@ -204,13 +204,35 @@ class TaskService {
     try {
       const uploadPromises = files.map(async (file) => {
         const storageRef = ref(storage, `attachments/${taskId}/${file.name}`);
-        await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(storageRef);
-        return { name: file.name, url };
+        
+        // Retry logic for CORS issues
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(storageRef);
+            return { name: file.name, url };
+          } catch (error: any) {
+            // Warn(`Upload attempt failed, retries left: ${retries - 1}`, error);
+            retries--;
+            
+            if (retries === 0) {
+              // If it's a CORS error, provide a helpful message
+              if (error.code === 'storage/unauthorized' || error.message?.includes('CORS')) {
+                throw new Error('File upload failed due to CORS policy. Please check your Firebase Storage configuration and try again.');
+              }
+              throw error;
+            }
+            
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+        throw new Error('Upload failed after retries');
       });
       return await Promise.all(uploadPromises);
     } catch (error) {
-      console.error('Error uploading files:', error);
+      // Error('Error uploading files:', error);
       throw error;
     }
   }

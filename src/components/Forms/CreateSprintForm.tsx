@@ -193,7 +193,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
             email: user.email || '',
             name: user.displayName || user.email || '',
           },
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
           totalStoryPoints: formCapacity.selectedTasksPoints,
           estimatedCapacity: formCapacity.estimatedCapacity,
           finalizedCapacity: formCapacity.finalizedCapacity,
@@ -216,7 +216,7 @@ const SprintModal: React.FC<SprintModalProps> = ({
         setSaveStatus('idle');
       }, 1000);
     } catch (error) {
-      console.error('Error saving sprint:', error);
+      // Error('Error saving sprint:', error);
       setSaveStatus('error');
     }
   };

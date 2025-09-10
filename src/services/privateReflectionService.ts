@@ -20,20 +20,62 @@ class PrivateReflectionService {
   async getPrivateReflection(
     userId: string,
     boardId: string,
-    sprintId: string
+    sprintId: string,
+    requestingUserId?: string
   ): Promise<PrivateReflectionData | null> {
     try {
-      // Check if user has access to this board
+      // If requestingUserId is provided, check if the requesting user has manager/admin access
+      if (requestingUserId && requestingUserId !== userId) {
+        // First try to get boardAccess document
+        const requestingUserAccess = await getDoc(doc(db, 'boardAccess', `${boardId}_${requestingUserId}`));
+        let isManagerOrAdmin = false;
+        
+        if (requestingUserAccess.exists()) {
+          const requestingUserData = requestingUserAccess.data();
+          isManagerOrAdmin = requestingUserData?.role === 'admin' || requestingUserData?.role === 'manager';
+        } else {
+          // If no boardAccess document, check if user is the board creator
+          const boardDoc = await getDoc(doc(db, 'boards', boardId));
+          if (boardDoc.exists()) {
+            const boardData = boardDoc.data();
+            if (boardData.createdBy.uid === requestingUserId) {
+              isManagerOrAdmin = true; // Board creator has admin access
+            }
+          }
+        }
+        
+        if (isManagerOrAdmin) {
+          // Manager/admin can access team member reflections
+          const reflectionDoc = await getDoc(
+            doc(db, 'privateReflections', `${sprintId}_${userId}`)
+          );
+          
+          if (reflectionDoc.exists()) {
+            return reflectionDoc.data() as PrivateReflectionData;
+          }
+          return null;
+        }
+      }
+
+      // Check if user has access to this board (for their own reflections)
       const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
       if (!accessDoc.exists()) {
-        // If no direct access, check if user is the board creator
+        // If no direct access, check if user is the board creator or collaborator
         const boardDoc = await getDoc(doc(db, 'boards', boardId));
         if (!boardDoc.exists()) {
           throw new Error('Board not found');
         }
         const boardData = boardDoc.data();
-        if (boardData.createdBy.uid !== userId) {
-          throw new Error('Access denied to board');
+        
+        // Check if user is the board creator
+        if (boardData.createdBy.uid === userId || boardData.createdBy.email === userId) {
+          // User is the board creator
+        } else {
+          // Check if user is a collaborator (using email)
+          const isCollaborator = boardData.collaborators?.some((collab: any) => collab.email === userId);
+          if (!isCollaborator) {
+            throw new Error('Access denied to board');
+          }
         }
       }
 
@@ -47,7 +89,7 @@ class PrivateReflectionService {
       
       return null;
     } catch (error) {
-      console.error('Error fetching private reflection:', error);
+      // Error fetching private reflection
       throw error;
     }
   }
@@ -99,7 +141,7 @@ class PrivateReflectionService {
 
       await setDoc(doc(db, 'privateReflections', reflectionId), privateReflectionData);
     } catch (error) {
-      console.error('Error saving private reflection:', error);
+      // Error saving private reflection
       throw error;
     }
   }
@@ -136,15 +178,41 @@ class PrivateReflectionService {
       }
 
       // Managers and admins can see all reflections for the sprint
+      // But we need to be careful about access - only show reflections for users who have access to this board
       const reflectionsQuery = query(
         collection(db, 'privateReflections'),
         where('sprintId', '==', sprintId)
       );
       
       const snapshot = await getDocs(reflectionsQuery);
-      return snapshot.docs.map(doc => doc.data() as PrivateReflectionData);
+      const reflections = snapshot.docs.map(doc => doc.data() as PrivateReflectionData);
+      
+      // Filter reflections to only include users who have access to this board
+      const validReflections = [];
+      for (const reflection of reflections) {
+        try {
+          // Check if the reflection owner has access to this board
+          const userAccessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${reflection.userId}`));
+          if (userAccessDoc.exists()) {
+            validReflections.push(reflection);
+          } else {
+            // Check if they're the board creator
+            const boardDoc = await getDoc(doc(db, 'boards', boardId));
+            if (boardDoc.exists()) {
+              const boardData = boardDoc.data();
+              if (boardData.createdBy.uid === reflection.userId) {
+                validReflections.push(reflection);
+              }
+            }
+          }
+        } catch (error) {
+          // Skipping reflection due to access check error
+        }
+      }
+      
+      return validReflections;
     } catch (error) {
-      console.error('Error fetching sprint private reflections:', error);
+      // Error fetching sprint private reflections
       throw error;
     }
   }
@@ -191,7 +259,7 @@ class PrivateReflectionService {
         lastUpdated: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Error adding manager feedback:', error);
+      // Error adding manager feedback
       throw error;
     }
   }

@@ -44,7 +44,7 @@ export interface Board {
   };
   collaborators: Collaborator[];
   statuses: string[];
-  createdAt: any;
+  createdAt: string;
   retroData?: RetroData;
   reflectionData?: ReflectionData;
   burndownData?: BurndownData; 
@@ -60,7 +60,7 @@ export interface ProgressLogEntry {
         'dueDate-change' | 'epics-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
         'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed' | 'sprint-change'| 'type-change';
   to?: string;
-  timestamp: any;
+  timestamp: string;
   user: string;
 }
 
@@ -83,7 +83,7 @@ export interface Sprint {
   startDate: string;
   endDate: string;
   status: 'planning' | 'active' | 'completed' | 'cancelled';
-  createdAt: any;
+  createdAt: string;
   createdBy: {
     uid: string;
     email: string;
@@ -170,7 +170,7 @@ export interface SprintServiceMethods {
 
 export interface Comment {
   text: string;
-  timestamp: any;
+  timestamp: string;
   user: string;
   edited?: boolean;
 }
@@ -193,7 +193,7 @@ export interface Task {
     email: string;
     name: string;
   } | null;
-  createdAt: any;
+  createdAt: string;
   createdBy: {
     uid: string;
     email: string;

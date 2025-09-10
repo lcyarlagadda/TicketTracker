@@ -2,6 +2,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Sprint } from '../types/types';
 import { sprintService } from '../../services/sprintService';
+import { serializeFirebaseData } from '../../utils/serialization';
 
 interface SprintState {
   sprints: Sprint[];
@@ -20,7 +21,8 @@ const initialState: SprintState = {
 export const fetchSprints = createAsyncThunk(
   'sprints/fetchSprints',
   async ({ userId, boardId }: { userId: string; boardId: string }) => {
-    return await sprintService.fetchBoardSprints(userId, boardId);
+    const sprints = await sprintService.fetchBoardSprints(userId, boardId);
+    return serializeFirebaseData(sprints);
   }
 );
 
@@ -31,7 +33,8 @@ export const createSprint = createAsyncThunk(
     boardId: string; 
     sprintData: Omit<Sprint, 'id'> 
   }) => {
-    return await sprintService.createSprint(userId, boardId, sprintData);
+    const sprint = await sprintService.createSprint(userId, boardId, sprintData);
+    return serializeFirebaseData(sprint);
   }
 );
 
@@ -44,7 +47,7 @@ export const updateSprint = createAsyncThunk(
     updates: Partial<Sprint> 
   }) => {
     await sprintService.updateSprint(userId, boardId, sprintId, updates);
-    return { sprintId, updates };
+    return { sprintId, updates: serializeFirebaseData(updates) };
   }
 );
 
@@ -113,7 +116,7 @@ export const sprintSlice = createSlice({
         state.loading = false;
         state.sprints = action.payload;
         // Set current sprint to active one if exists
-        const activeSprint = action.payload.find(s => s.status === 'active');
+        const activeSprint = action.payload.find((s: Sprint) => s.status === 'active');
         if (activeSprint) {
           state.currentSprint = activeSprint;
         }

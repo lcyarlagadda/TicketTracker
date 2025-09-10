@@ -2,6 +2,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Board, BoardsState } from '../types/types';
 import { boardService } from '../../services/boardService';
+import { serializeFirebaseData } from '../../utils/serialization';
 
 const initialState: BoardsState = {
   boards: [],
@@ -13,21 +14,24 @@ const initialState: BoardsState = {
 export const fetchBoards = createAsyncThunk(
   'boards/fetchBoards',
   async ({ userId, userEmail }: { userId: string; userEmail?: string }) => {
-    return await boardService.fetchUserBoards(userId, userEmail);
+    const boards = await boardService.fetchUserBoards(userId, userEmail);
+    return serializeFirebaseData(boards);
   }
 );
 
 export const createBoard = createAsyncThunk(
   'boards/createBoard',
   async ({ userId, boardData }: { userId: string; boardData: Omit<Board, 'id'> }) => {
-    return await boardService.createBoard(userId, boardData);
+    const board = await boardService.createBoard(userId, boardData);
+    return serializeFirebaseData(board);
   }
 );
 
 export const fetchBoard = createAsyncThunk(
   'boards/fetchBoard',
   async ({ userId, boardId }: { userId: string; boardId: string }) => {
-    return await boardService.fetchBoard(userId, boardId);
+    const board = await boardService.fetchBoard(userId, boardId);
+    return serializeFirebaseData(board);
   }
 );
 
@@ -39,7 +43,7 @@ export const updateBoard = createAsyncThunk(
     updates: Partial<Board> 
   }) => {
     await boardService.updateBoard(userId, boardId, updates);
-    return { boardId, updates };
+    return { boardId, updates: serializeFirebaseData(updates) };
   }
 );
 
@@ -56,7 +60,7 @@ export const boardsSlice = createSlice({
   initialState,
   reducers: {
     setCurrentBoard: (state, action: PayloadAction<Board | null>) => {
-      state.currentBoard = action.payload;
+      state.currentBoard = action.payload ? serializeFirebaseData(action.payload) : null;
     },
     clearError: (state) => {
       state.error = null;

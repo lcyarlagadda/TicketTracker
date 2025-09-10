@@ -247,7 +247,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
             name: assignedTo
           }
         : null,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
       createdBy: {
         uid: "",
         email: "",

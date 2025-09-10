@@ -70,7 +70,7 @@ const CompactCalendar: React.FC<CompactCalendarProps> = ({ boards, onClose }) =>
                   }
                 }
               } catch (error) {
-                console.error('Error fetching subtasks:', error);
+                // Error('Error fetching subtasks:', error);
               }
             }
           }
@@ -78,7 +78,7 @@ const CompactCalendar: React.FC<CompactCalendarProps> = ({ boards, onClose }) =>
 
         setCalendarTasks(calendarTasksData);
       } catch (error) {
-        console.error('Error fetching calendar tasks:', error);
+        // Error('Error fetching calendar tasks:', error);
       } finally {
         setLoading(false);
       }

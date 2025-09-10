@@ -25,20 +25,20 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
   if (!isOpen) return null;
 
   const handleRoleChange = (collaborator: Collaborator, newRole: BoardRole) => {
-    console.log('Role change clicked:', { collaborator: collaborator.name, newRole, currentUserEmail });
+    // Log('Role change clicked:', { collaborator: collaborator.name, newRole, currentUserEmail });
     
     if (!canAssignRoleLegacy(board, currentUserEmail, newRole)) {
-      console.log('Cannot assign role - permission denied');
+      // Log('Cannot assign role - permission denied');
       return;
     }
 
     // Don't allow changing the board creator's role
     if (collaborator.email === board.createdBy.email) {
-      console.log('Cannot change board creator role');
+      // Log('Cannot change board creator role');
       return;
     }
 
-    console.log('Setting up confirmation dialog');
+    // Log('Setting up confirmation dialog');
     setSelectedCollaborator(collaborator);
     setSelectedRole(newRole);
     setShowConfirmDialog(true);
@@ -51,7 +51,7 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
       setSelectedCollaborator(null);
       
       // Show success message (you can replace this with a toast notification)
-      console.log(`Successfully changed ${selectedCollaborator.name}'s role to ${getRoleDisplayName(selectedRole)}`);
+      // Log(`Successfully changed ${selectedCollaborator.name}'s role to ${getRoleDisplayName(selectedRole)}`);
     }
   };
 

@@ -600,7 +600,7 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
           }
         }
       } catch (error) {
-        console.error('Error fetching sprint data:', error);
+        // Error('Error fetching sprint data:', error);
       }
     };
 
@@ -677,7 +677,7 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
       
       setSaveStatus('saved');
     } catch (error) {
-      console.error('Error saving retro data:', error);
+      // Error('Error saving retro data:', error);
       setSaveStatus('error');
     }
   };
@@ -727,9 +727,9 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
             message: `${user.displayName || user.email} mentioned you in a retrospective item: "${newItem.content.trim()}"`,
             boardUrl,
           });
-          console.log('Retrospective mention notification sent successfully');
+          // Retrospective mention notification sent successfully
         } catch (notificationError) {
-          console.error('Failed to send retrospective mention notification:', notificationError);
+          // Error('Failed to send retrospective mention notification:', notificationError);
         }
       });
     }
@@ -795,9 +795,9 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
             message: `${user.displayName || user.email} mentioned you in a retrospective comment: "${commentText}"`,
             boardUrl,
           });
-          console.log('Retrospective comment mention notification sent successfully');
+          // Retrospective comment mention notification sent successfully
         } catch (notificationError) {
-          console.error('Failed to send retrospective comment mention notification:', notificationError);
+          // Error('Failed to send retrospective comment mention notification:', notificationError);
         }
       });
     }
@@ -914,43 +914,47 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 tablet:p-6">
       {/* Sprint Summary Header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">{sprint.name} Retrospective</h2>
-            <p className="text-slate-600 mt-1">Reflect on what happened and plan improvements for the next sprint</p>
+            <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">{sprint.name} Retrospective</h2>
+            <p className="text-sm tablet:text-base text-slate-600 mt-1">Reflect on what happened and plan improvements for the next sprint</p>
           </div>
         </div>
 
         {/* Sprint Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 tablet:grid-cols-3 laptop:grid-cols-6 gap-3">
           <div className="text-center bg-slate-50 rounded-lg p-3">
-            <div className="text-xl font-bold text-slate-800">{sprintSummary.totalTasks}</div>
-            <div className="text-sm text-slate-600">Total Tasks</div>
+            <div className="text-lg font-bold text-slate-800">{sprintSummary.totalTasks}</div>
+            <div className="text-xs text-slate-600">Total Tasks</div>
           </div>
           <div className="text-center bg-green-50 rounded-lg p-3">
-            <div className="text-xl font-bold text-green-600">{sprintSummary.completedTasks}</div>
-            <div className="text-sm text-slate-600">Completed</div>
+            <div className="text-lg font-bold text-green-600">{sprintSummary.completedTasks}</div>
+            <div className="text-xs text-slate-600">Completed Tasks</div>
           </div>
           <div className="text-center bg-blue-50 rounded-lg p-3">
-            <div className="text-xl font-bold text-blue-600">{sprintSummary.velocity}</div>
-            <div className="text-sm text-slate-600">Story Points</div>
+            <div className="text-lg font-bold text-blue-600">{sprintSummary.totalPoints}</div>
+            <div className="text-xs text-slate-600">Total Points</div>
+          </div>
+          <div className="text-center bg-green-50 rounded-lg p-3">
+            <div className="text-lg font-bold text-green-600">{sprintSummary.completedPoints}</div>
+            <div className="text-xs text-slate-600">Points Delivered</div>
           </div>
           <div className="text-center bg-yellow-50 rounded-lg p-3">
-            <div className="text-xl font-bold text-purple-600">{sprintSummary.completionRate}%</div>
-            <div className="text-sm text-slate-600">Completion</div>
+            <div className="text-lg font-bold text-purple-600">{sprintSummary.completionRate}%</div>
+            <div className="text-xs text-slate-600">Completion</div>
           </div>
           <div className="text-center bg-orange-50 rounded-lg p-3">
-            <div className="text-xl font-bold text-orange-600">{sprintSummary.teamSize}</div>
-            <div className="text-sm text-slate-600">Team Size</div>
+            <div className="text-lg font-bold text-orange-600">{sprintSummary.teamSize}</div>
+            <div className="text-xs text-slate-600">Team Size</div>
           </div>
         </div>
       </div>
 
       {/* Retrospective Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 laptop:grid-cols-3 gap-6">
         {(Object.entries(columnConfig) as Array<[keyof typeof columnConfig, typeof columnConfig[keyof typeof columnConfig]]>).map(([type, config]) => {
           const IconComponent = config.icon;
           const items = getItemsByType(type);

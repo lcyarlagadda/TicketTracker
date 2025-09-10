@@ -225,7 +225,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy task ID:', err);
+      // Error('Failed to copy task ID:', err);
     }
   };
 
@@ -323,7 +323,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
           {
             type: "created" as const,
             desc: `Subtask ${newChildTask.title.trim()} added`,
-            timestamp: Timestamp.now(),
+            timestamp: new Date().toISOString(),
             user: user.displayName || user.email,
           },
         ],
@@ -332,7 +332,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
           email: user.email,
           name: user.displayName || user.email,
         },
-        createdAt: Timestamp.now(),
+        createdAt: new Date().toISOString(),
         boardId: currentBoard.id,
       };
 
@@ -353,7 +353,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       });
       setShowAddChildTask(false);
     } catch (error) {
-      console.error("Error adding child task:", error);
+      // Error("Error adding child task:", error);
       setErrorMessage("Failed to create subtask. Please try again.");
     }
   };
@@ -372,7 +372,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         })
       ).unwrap();
     } catch (error) {
-      console.error("Error toggling child task:", error);
+      // Error("Error toggling child task:", error);
       setErrorMessage("Failed to update subtask status. Please try again.");
     }
   };
@@ -389,7 +389,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         })
       ).unwrap();
     } catch (error) {
-      console.error("Error deleting child task:", error);
+      // Error("Error deleting child task:", error);
       setErrorMessage("Failed to delete subtask. Please try again.");
     }
   };
@@ -444,7 +444,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         priority: "Medium",
       });
     } catch (error) {
-      console.error("Error updating child task:", error);
+      // Error("Error updating child task:", error);
       setErrorMessage("Failed to update subtask. Please try again.");
     }
   };
@@ -468,7 +468,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "title-change" as const,
           desc: `Title changed from "${task.title}" to "${title.trim()}"`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -479,7 +479,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "type-change" as const,
           desc: `Task type changed from ${task.type} to ${taskType}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -490,7 +490,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "priority-change" as const,
           desc: `Priority changed from ${task.priority} to ${priority}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -508,7 +508,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "points-change" as const,
           desc: `Story points changed from ${task.points || 'not set'} to ${points || 'not set'}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -526,7 +526,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "sprint-change" as const,
           desc: `Task moved from ${oldSprintName} to ${newSprintName}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -537,7 +537,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "description-change" as const,
           desc: "Task description updated",
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -559,7 +559,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
           desc: `Assigned from ${task.assignedTo?.name || "Unassigned"} to ${
             assignedTo || "Unassigned"
           }`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -569,7 +569,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "dueDate-change" as const,
           desc: `Due date updated to ${dueDate || "No date"}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -582,7 +582,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "epics-change" as const,
           desc: "Epics updated",
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -598,7 +598,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "file-upload" as const,
           desc: `${files.length} file(s) uploaded`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -637,9 +637,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
               boardUrl,
               taskId: task.id,
             });
-            console.log('Task assignment notification sent successfully');
+            // Task assignment notification sent successfully
           } catch (notificationError) {
-            console.error('Failed to send task assignment notification:', notificationError);
+            // Error('Failed to send task assignment notification:', notificationError);
             // Don't show error to user as the task was still updated successfully
           }
         }
@@ -650,7 +650,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       setIsVisible(false);
       setTimeout(() => onClose(), 200);
     } catch (error) {
-      console.error("Error saving task:", error);
+      // Error("Error saving task:", error);
       setErrorMessage("Failed to save changes. Please try again.");
     }
   };
@@ -660,7 +660,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
 
     const newComment: Comment = {
       text: commentText,
-      timestamp: Timestamp.now(),
+      timestamp: new Date().toISOString(),
       user: user?.displayName || user?.email || "Unknown",
     };
 
@@ -807,7 +807,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
                 </span>
                 <span className="flex items-center gap-2">
                   <Clock size={14} />
-                  {task.createdAt?.toDate?.()?.toLocaleDateString?.() || "N/A"}
+                  {(task.createdAt as any)?.toDate?.()?.toLocaleDateString?.() || 
+                    (typeof task.createdAt === 'string' ? new Date(task.createdAt).toLocaleDateString() : "N/A")}
                 </span>
                 {childTasks.length > 0 && (
                   <span className="flex items-center gap-2">
@@ -1469,7 +1470,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
                         </p>
                         <div className="text-xs text-slate-500 mt-1">
                           {log.user || "System"} • {" "}
-                          {log.timestamp?.toDate?.()?.toLocaleString?.() || ""}
+                          {(log.timestamp as any)?.toDate?.()?.toLocaleString?.() || 
+                            (typeof log.timestamp === 'string' ? new Date(log.timestamp).toLocaleString() : "")}
                         </div>
                       </div>
                     </div>
@@ -1539,7 +1541,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
                                 {comment.user}
                               </p>
                               <p className="text-xs text-slate-500">
-                                {comment.timestamp?.toDate?.()?.toLocaleString() || "Unknown time"}
+                                {(comment.timestamp as any)?.toDate?.()?.toLocaleString() || 
+                                  (typeof comment.timestamp === 'string' ? new Date(comment.timestamp).toLocaleString() : "Unknown time")}
                                 {comment.edited && (
                                   <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
                                     Edited

@@ -13,7 +13,7 @@ import {
   onSnapshot,
   Unsubscribe
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { db, storage } from '../firebase';
 import { Board, BoardRole, Collaborator } from '../store/types/types';
@@ -44,7 +44,7 @@ class BoardService {
               return { id: boardDoc.id, ...boardDoc.data() } as Board;
             }
           } catch (error) {
-            console.error('Error fetching board:', error);
+            // Error('Error fetching board:', error);
           }
           return null;
         })
@@ -53,12 +53,14 @@ class BoardService {
       // Filter out null values and sort by creation date
       const boards = boardsWithNulls.filter(board => board !== null) as Board[];
       return boards.sort((a, b) => {
-        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt);
-        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        const aTime = (a.createdAt as any)?.toDate?.() || 
+          (typeof a.createdAt === 'string' ? new Date(a.createdAt) : new Date());
+        const bTime = (b.createdAt as any)?.toDate?.() || 
+          (typeof b.createdAt === 'string' ? new Date(b.createdAt) : new Date());
         return bTime.getTime() - aTime.getTime();
       });
     } catch (error) {
-      console.error('Error fetching boards:', error);
+      // Error('Error fetching boards:', error);
       throw error;
     }
   }
@@ -88,7 +90,7 @@ class BoardService {
               return { id: boardDoc.id, ...boardDoc.data() } as Board;
             }
           } catch (error) {
-            console.error('Error fetching board:', error);
+            // Error('Error fetching board:', error);
           }
           return null;
         })
@@ -97,8 +99,10 @@ class BoardService {
       // Filter out null values and sort by creation date
       const boards = boardsWithNulls.filter(board => board !== null) as Board[];
       const sortedBoards = boards.sort((a, b) => {
-        const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt);
-        const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt);
+        const aTime = (a.createdAt as any)?.toDate?.() || 
+          (typeof a.createdAt === 'string' ? new Date(a.createdAt) : new Date());
+        const bTime = (b.createdAt as any)?.toDate?.() || 
+          (typeof b.createdAt === 'string' ? new Date(b.createdAt) : new Date());
         return bTime.getTime() - aTime.getTime();
       });
       
@@ -122,7 +126,7 @@ class BoardService {
       const newBoard = {
         ...boardData,
         imageUrl,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
       };
 
       delete (newBoard as any).imageFile; // don't persist File in Firestore
@@ -131,7 +135,7 @@ class BoardService {
       await setDoc(doc(db, 'boards', boardId), newBoard);
 
       // Grant admin access to the creator
-      console.log(`Creating board access for creator: ${boardId}_${userId}`);
+      // Creating board access for creator
       await setDoc(doc(db, 'boardAccess', `${boardId}_${userId}`), {
         boardId,
         userId,
@@ -139,7 +143,7 @@ class BoardService {
         grantedAt: serverTimestamp(),
         grantedBy: userId
       });
-      console.log('Board access created successfully');
+      // Board access created successfully
 
       // Share board with collaborators (create pending access entries)
       if (boardData.collaborators && boardData.collaborators.length > 0) {
@@ -154,7 +158,7 @@ class BoardService {
 
       return { id: boardId, ...newBoard } as Board;
     } catch (error) {
-      console.error('Error creating board:', error);
+      // Error('Error creating board:', error);
       throw error;
     }
   }
@@ -175,7 +179,7 @@ class BoardService {
       }
       return { id: boardDoc.id, ...boardDoc.data() } as Board;
     } catch (error) {
-      console.error('Error fetching board:', error);
+      // Error('Error fetching board:', error);
       throw error;
     }
   }
@@ -192,7 +196,7 @@ class BoardService {
       const boardRef = doc(db, 'boards', boardId);
       await updateDoc(boardRef, updates);
     } catch (error) {
-      console.error('Error updating board:', error);
+      // Error('Error updating board:', error);
       throw error;
     }
   }
@@ -232,7 +236,7 @@ class BoardService {
           grantedBy: ownerId
         });
         
-        console.log(`Board shared with existing user ${collaboratorEmail} (immediate access granted)`);
+        // Board shared with existing user (immediate access granted)
         
         // Send notification to existing user
         notificationService.notifyCollaboratorAdded({
@@ -252,7 +256,7 @@ class BoardService {
           sharedBy: ownerId
         });
         
-        console.log(`Board shared with ${collaboratorEmail} (pending access created)`);
+        // Board shared with new user (pending access created)
         
         // Send notification to new user (they'll get access when they sign up)
         notificationService.notifyCollaboratorAdded({
@@ -264,7 +268,7 @@ class BoardService {
         });
       }
     } catch (error) {
-      console.error('Error sharing board:', error);
+      // Error('Error sharing board:', error);
       throw error;
     }
   }
@@ -279,7 +283,7 @@ class BoardService {
         grantedAt: serverTimestamp()
       });
     } catch (error) {
-      console.error('Error granting board access:', error);
+      // Error('Error granting board access:', error);
       throw error;
     }
   }
@@ -310,12 +314,12 @@ class BoardService {
         // Remove from pending
         await deleteDoc(doc.ref);
         
-        console.log(`Granted access to board ${boardId} for user ${userId}`);
+        // Granted access to board for user
       });
       
       await Promise.all(grantPromises);
     } catch (error) {
-      console.error('Error granting pending access:', error);
+      // Error('Error granting pending access:', error);
       throw error;
     }
   }
@@ -325,7 +329,7 @@ class BoardService {
     try {
       await deleteDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
     } catch (error) {
-      console.error('Error removing board access:', error);
+      // Error('Error removing board access:', error);
       throw error;
     }
   }
@@ -336,12 +340,12 @@ class BoardService {
       // Remove from pending access
       await deleteDoc(doc(db, 'pendingBoardAccess', `${boardId}_${collaboratorEmail.replace(/[^a-zA-Z0-9]/g, '_')}`));
     } catch (error) {
-      console.error('Error unsharing board:', error);
+      // Error('Error unsharing board:', error);
       throw error;
     }
   }
 
-  // Delete board
+  // Delete board and all associated data
   async deleteBoard(userId: string, boardId: string): Promise<void> {
     try {
       // Check if user has admin access to delete the board
@@ -350,21 +354,209 @@ class BoardService {
         throw new Error('Access denied: Only board admins can delete boards');
       }
 
-      // Get all users with access to this board
+      // Log(`Starting comprehensive deletion of board ${boardId}`);
+
+      // 1. Delete all tasks for this board (including their file attachments)
+      await this.deleteAllBoardTasks(boardId);
+      // Log(`Deleted all tasks for board ${boardId}`);
+
+      // 2. Delete board image from storage if it exists
+      await this.deleteBoardImage(boardId);
+      // Log(`Deleted board image for board ${boardId}`);
+
+      // 3. Delete all sprints for this board
+      await this.deleteAllBoardSprints(boardId);
+      // Log(`Deleted all sprints for board ${boardId}`);
+
+      // 4. Delete all private reflections for this board's sprints
+      await this.deleteAllBoardPrivateReflections(boardId);
+      // Log(`Deleted all private reflections for board ${boardId}`);
+
+      // 5. Delete all board access entries
+      await this.deleteAllBoardAccess(boardId);
+      // Log(`Deleted all board access entries for board ${boardId}`);
+
+      // 6. Delete all pending board access entries
+      await this.deleteAllPendingBoardAccess(boardId);
+      // Log(`Deleted all pending board access entries for board ${boardId}`);
+
+      // 7. Delete the board itself
+      await deleteDoc(doc(db, 'boards', boardId));
+      // Log(`Deleted board ${boardId}`);
+
+      // Log(`Successfully completed comprehensive deletion of board ${boardId}`);
+    } catch (error) {
+      // Error('Error deleting board:', error);
+      throw error;
+    }
+  }
+
+  // Delete all tasks for a board (including their file attachments)
+  private async deleteAllBoardTasks(boardId: string): Promise<void> {
+    try {
+      const tasksQuery = query(
+        collection(db, 'tasks'),
+        where('boardId', '==', boardId)
+      );
+      const tasksSnapshot = await getDocs(tasksQuery);
+      
+      if (!tasksSnapshot.empty) {
+        // Delete file attachments for each task
+        const deleteAttachmentPromises = tasksSnapshot.docs.map(async (taskDoc) => {
+          const taskId = taskDoc.id;
+          try {
+            // Delete all files in the attachments/{taskId}/ folder
+            const attachmentsRef = ref(storage, `attachments/${taskId}`);
+            const attachmentsList = await listAll(attachmentsRef);
+            
+            if (attachmentsList.items.length > 0) {
+              const deleteFilePromises = attachmentsList.items.map(fileRef => deleteObject(fileRef));
+              await Promise.all(deleteFilePromises);
+              // Log(`Deleted ${attachmentsList.items.length} file attachments for task ${taskId}`);
+            }
+          } catch (error) {
+            // Log error but don't fail the entire operation if file deletion fails
+            // Warn(`Failed to delete attachments for task ${taskId}:`, error);
+          }
+        });
+        
+        await Promise.all(deleteAttachmentPromises);
+        
+        // Delete the task documents
+        const deleteTaskPromises = tasksSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deleteTaskPromises);
+        // Log(`Deleted ${tasksSnapshot.docs.length} tasks for board ${boardId}`);
+      }
+    } catch (error) {
+      // Error('Error deleting board tasks:', error);
+      throw error;
+    }
+  }
+
+  // Delete board image from storage
+  private async deleteBoardImage(boardId: string): Promise<void> {
+    try {
+      // Get the board document to check if it has an imageUrl
+      const boardDoc = await getDoc(doc(db, 'boards', boardId));
+      if (boardDoc.exists()) {
+        const boardData = boardDoc.data();
+        if (boardData.imageUrl) {
+          try {
+            // Extract the file path from the imageUrl
+            // Firebase Storage URLs typically contain the path after the domain
+            const url = new URL(boardData.imageUrl);
+            const pathMatch = url.pathname.match(/\/o\/(.+)\?/);
+            if (pathMatch) {
+              const filePath = decodeURIComponent(pathMatch[1]);
+              const imageRef = ref(storage, filePath);
+              await deleteObject(imageRef);
+              // Log(`Deleted board image: ${filePath}`);
+            }
+          } catch (error) {
+            // Log error but don't fail the entire operation if image deletion fails
+            // Warn(`Failed to delete board image for board ${boardId}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      // Log error but don't fail the entire operation if image deletion fails
+      // Warn(`Failed to delete board image for board ${boardId}:`, error);
+    }
+  }
+
+  // Delete all sprints for a board
+  private async deleteAllBoardSprints(boardId: string): Promise<void> {
+    try {
+      const sprintsQuery = query(
+        collection(db, 'sprints'),
+        where('boardId', '==', boardId)
+      );
+      const sprintsSnapshot = await getDocs(sprintsQuery);
+      
+      if (!sprintsSnapshot.empty) {
+        const deleteSprintPromises = sprintsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deleteSprintPromises);
+        // Log(`Deleted ${sprintsSnapshot.docs.length} sprints for board ${boardId}`);
+      }
+    } catch (error) {
+      // Error('Error deleting board sprints:', error);
+      throw error;
+    }
+  }
+
+  // Delete all private reflections for a board's sprints
+  private async deleteAllBoardPrivateReflections(boardId: string): Promise<void> {
+    try {
+      // First, get all sprints for this board to get their IDs
+      const sprintsQuery = query(
+        collection(db, 'sprints'),
+        where('boardId', '==', boardId)
+      );
+      const sprintsSnapshot = await getDocs(sprintsQuery);
+      
+      if (!sprintsSnapshot.empty) {
+        const sprintIds = sprintsSnapshot.docs.map(doc => doc.id);
+        
+        // Delete all private reflections for these sprints
+        const deleteReflectionPromises = sprintIds.map(async (sprintId) => {
+          const reflectionsQuery = query(
+            collection(db, 'privateReflections'),
+            where('sprintId', '==', sprintId)
+          );
+          const reflectionsSnapshot = await getDocs(reflectionsQuery);
+          
+          if (!reflectionsSnapshot.empty) {
+            const deletePromises = reflectionsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+            await Promise.all(deletePromises);
+            // Log(`Deleted ${reflectionsSnapshot.docs.length} private reflections for sprint ${sprintId}`);
+          }
+        });
+        
+        await Promise.all(deleteReflectionPromises);
+        // Log(`Deleted all private reflections for board ${boardId}`);
+      }
+    } catch (error) {
+      // Error('Error deleting board private reflections:', error);
+      throw error;
+    }
+  }
+
+  // Delete all board access entries
+  private async deleteAllBoardAccess(boardId: string): Promise<void> {
+    try {
       const boardAccessQuery = query(
         collection(db, 'boardAccess'),
         where('boardId', '==', boardId)
       );
       const accessSnapshot = await getDocs(boardAccessQuery);
       
-      // Remove all board access entries
-      const deleteAccessPromises = accessSnapshot.docs.map(doc => deleteDoc(doc.ref));
-      await Promise.all(deleteAccessPromises);
-      
-      // Delete the board
-      await deleteDoc(doc(db, 'boards', boardId));
+      if (!accessSnapshot.empty) {
+        const deleteAccessPromises = accessSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deleteAccessPromises);
+        // Log(`Deleted ${accessSnapshot.docs.length} board access entries for board ${boardId}`);
+      }
     } catch (error) {
-      console.error('Error deleting board:', error);
+      // Error('Error deleting board access entries:', error);
+      throw error;
+    }
+  }
+
+  // Delete all pending board access entries
+  private async deleteAllPendingBoardAccess(boardId: string): Promise<void> {
+    try {
+      const pendingAccessQuery = query(
+        collection(db, 'pendingBoardAccess'),
+        where('boardId', '==', boardId)
+      );
+      const pendingSnapshot = await getDocs(pendingAccessQuery);
+      
+      if (!pendingSnapshot.empty) {
+        const deletePendingPromises = pendingSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePendingPromises);
+        // Log(`Deleted ${pendingSnapshot.docs.length} pending board access entries for board ${boardId}`);
+      }
+    } catch (error) {
+      // Error('Error deleting pending board access entries:', error);
       throw error;
     }
   }

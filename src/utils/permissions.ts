@@ -39,7 +39,7 @@ export const getUserRole = async (boardId: string, userId: string): Promise<Boar
     }
     return null;
   } catch (error) {
-    console.error('Error getting user role:', error);
+    // Error('Error getting user role:', error);
     return null;
   }
 };

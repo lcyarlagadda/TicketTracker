@@ -127,7 +127,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
         taskId: task.id
       })).unwrap();
     } catch (err) {
-      console.error('Failed to delete task:', err);
+      // Error('Failed to delete task:', err);
     } finally {
       setShowConfirm(false);
     }
@@ -164,7 +164,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy task ID:', err);
+      // Error('Failed to copy task ID:', err);
     }
   };
 

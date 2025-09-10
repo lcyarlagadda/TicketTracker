@@ -38,7 +38,7 @@ class SprintService {
       const newSprint = {
         ...sprintData,
         boardId,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
       };
 
       await setDoc(
@@ -48,7 +48,7 @@ class SprintService {
 
       return { id: sprintId, ...newSprint } as Sprint;
     } catch (error) {
-      console.error('Error creating sprint:', error);
+      // Error('Error creating sprint:', error);
       throw error;
     }
   }
@@ -56,28 +56,28 @@ class SprintService {
   // Fetch all sprints for a board
   async fetchBoardSprints(userId: string, boardId: string): Promise<Sprint[]> {
     try {
-      console.log(`Fetching sprints for user ${userId} and board ${boardId}`);
+      // Fetching sprints for user and board
       
       // Check if user has access to this board
       const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
-      console.log(`Board access exists: ${accessDoc.exists()}`);
+      // Board access checked
       
       if (!accessDoc.exists()) {
         // If no direct access, check if user is the board creator
         const boardDoc = await getDoc(doc(db, 'boards', boardId));
         if (!boardDoc.exists()) {
-          console.log('Board not found');
+          // Board not found
           throw new Error('Board not found');
         }
         const boardData = boardDoc.data();
-        console.log(`Board creator: ${boardData.createdBy.uid}, Current user: ${userId}`);
+        // Board creator checked
         if (boardData.createdBy.uid !== userId) {
-          console.log('Access denied - not board creator');
+          // Access denied - not board creator
           throw new Error('Access denied to board');
         }
-        console.log('Access granted - user is board creator');
+        // Access granted - user is board creator
       } else {
-        console.log('Access granted - user has board access');
+        // Access granted - user has board access
       }
 
       const sprintsQuery = query(
@@ -85,7 +85,7 @@ class SprintService {
         where('boardId', '==', boardId)
       );
       const snapshot = await getDocs(sprintsQuery);
-      console.log(`Found ${snapshot.docs.length} sprints`);
+      // Found sprints
       
       const sprints = snapshot.docs.map(doc => ({ 
         id: doc.id, 
@@ -96,7 +96,7 @@ class SprintService {
       // Sort in memory by sprint number
       return sprints.sort((a, b) => (b.sprintNumber || 0) - (a.sprintNumber || 0));
     } catch (error) {
-      console.error('Error fetching sprints:', error);
+      // Error('Error fetching sprints:', error);
       throw error;
     }
   }
@@ -126,7 +126,7 @@ class SprintService {
       }
       return { id: sprintDoc.id, boardId, ...sprintDoc.data() } as Sprint;
     } catch (error) {
-      console.error('Error fetching sprint:', error);
+      // Error('Error fetching sprint:', error);
       throw error;
     }
   }
@@ -148,7 +148,7 @@ class SprintService {
       const sprintRef = doc(db, 'sprints', sprintId);
       await updateDoc(sprintRef, updates);
     } catch (error) {
-      console.error('Error updating sprint:', error);
+      // Error('Error updating sprint:', error);
       throw error;
     }
   }
@@ -168,7 +168,7 @@ class SprintService {
       // Then delete the sprint
       await deleteDoc(doc(db, 'sprints', sprintId));
     } catch (error) {
-      console.error('Error deleting sprint:', error);
+      // Error('Error deleting sprint:', error);
       throw error;
     }
   }
@@ -205,7 +205,7 @@ class SprintService {
       
       await batch.commit();
     } catch (error) {
-      console.error('Error assigning tasks to sprint:', error);
+      // Error('Error assigning tasks to sprint:', error);
       throw error;
     }
   }
@@ -239,7 +239,7 @@ class SprintService {
         await batch.commit();
       }
     } catch (error) {
-      console.error('Error unassigning tasks from sprint:', error);
+      // Error('Error unassigning tasks from sprint:', error);
       throw error;
     }
   }
@@ -268,7 +268,7 @@ class SprintService {
       }
       return tasks;
     } catch (error) {
-      console.error('Error fetching tasks by IDs:', error);
+      // Error('Error fetching tasks by IDs:', error);
       throw error;
     }
   }
@@ -282,7 +282,7 @@ class SprintService {
       const maxSprintNumber = Math.max(...sprints.map(s => s.sprintNumber || 0));
       return maxSprintNumber + 1;
     } catch (error) {
-      console.error('Error getting next sprint number:', error);
+      // Error('Error getting next sprint number:', error);
       return 1;
     }
   }
@@ -333,7 +333,7 @@ class SprintService {
       await this.updateSprint(userId, boardId, sprintId, updates);
       return await this.fetchSprint(userId, boardId, sprintId);
     } catch (error) {
-      console.error('Error completing sprint:', error);
+      // Error('Error completing sprint:', error);
       throw error;
     }
   }
@@ -375,7 +375,7 @@ async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promi
       return aDate - bDate;
     });
   } catch (error) {
-    console.error('Error fetching sprint tasks:', error);
+    // Error('Error fetching sprint tasks:', error);
     throw error;
   }
 }

@@ -17,6 +17,7 @@ import {
   Hash,
   AtSign,
   Shield,
+  Edit3,
 } from "lucide-react";
 import { useAppSelector } from "../../../hooks/redux";
 import { notificationService } from "../../../services/notificationService";
@@ -334,6 +335,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   const [userRole, setUserRole] = useState<'admin' | 'manager' | 'user'>('user');
   const [selectedTeamMember, setSelectedTeamMember] = useState<string>('');
   const [teamReflections, setTeamReflections] = useState<{[userId: string]: PrivateReflectionData}>({});
+  const [viewMode, setViewMode] = useState<'self' | 'manager'>('self'); // New state for view mode
 
   const [activeTab, setActiveTab] = useState<TabKey>("personal");
   const [newReflection, setNewReflection] = useState<NewReflectionForm>({
@@ -344,15 +346,23 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     rating: 3,
   });
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
-  const [reviewFilter, setReviewFilter] = useState<"all" | "self" | "manager">(
-    "all"
-  );
+  // Removed reviewFilter as it's replaced by viewMode
   const [commentTexts, setCommentTexts] = useState<{ [key: number]: string }>(
     {}
   );
   const [showComments, setShowComments] = useState<{ [key: number]: boolean }>(
     {}
   );
+  const [editingReflection, setEditingReflection] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<{
+    content: string;
+    priority: "Low" | "Medium" | "High";
+    rating: number;
+  }>({
+    content: "",
+    priority: "Medium",
+    rating: 3,
+  });
 
   // Task modal state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -399,20 +409,21 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
             const reflection = await privateReflectionService.getPrivateReflection(
               collaborator.email, // Using email as userId for now
               board.id,
-              sprintId
+              sprintId,
+              user.uid // Pass the requesting user (manager) UID
             );
             if (reflection) {
               teamReflectionsData[collaborator.email] = reflection;
             }
           } catch (error) {
-            console.log(`No reflection found for ${collaborator.name}`);
+            // No reflection found for this collaborator
           }
         }
       }
       
       setTeamReflections(teamReflectionsData);
     } catch (error) {
-      console.error("Error fetching team reflections:", error);
+      // Error fetching team reflections
     }
   };
 
@@ -472,7 +483,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           }
         }
       } catch (error) {
-        console.error("Error fetching sprint data:", error);
+        // Error fetching sprint data
       }
     };
 
@@ -494,7 +505,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         reflectionData
       );
     } catch (error) {
-      console.error("Error saving reflection data:", error);
+      // Error saving reflection data
     }
   };
 
@@ -513,6 +524,16 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
 
   const handleAddReflection = (): void => {
     if (!newReflection.content.trim() || !user) return;
+    
+    // Prevent non-managers from adding manager reviews
+    if (viewMode === 'manager' && userRole !== 'manager') {
+      return;
+    }
+    
+    // Prevent managers from adding self reviews
+    if (userRole === 'manager' && viewMode === 'self' && !selectedTeamMember) {
+      return;
+    }
 
     const reflection: EnhancedReflectionItem = {
       id: Date.now(),
@@ -523,7 +544,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       authorEmail: user.email || "",
       createdAt: new Date().toISOString(),
       tags: [],
-      reviewType: selectedTeamMember ? "manager" : newReflection.reviewType,
+      reviewType: selectedTeamMember ? "manager" : (userRole === 'manager' ? "manager" : (viewMode === 'manager' ? "manager" : newReflection.reviewType)),
       rating: newReflection.rating,
       comments: [],
       likes: [],
@@ -596,7 +617,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           boardUrl,
         });
       });
-      console.log(`Reflection mention notifications queued for ${mentionedUsers.length} user(s)`);
+      // Reflection mention notifications queued
     }
   };
 
@@ -692,7 +713,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           boardUrl,
         });
       });
-      console.log(`Reflection comment mention notifications queued for ${mentionedUsers.length} user(s)`);
+      // Reflection comment mention notifications queued
     }
   };
 
@@ -731,6 +752,54 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           return item;
         }
       ),
+    });
+  };
+
+  const handleEditReflection = (reflection: EnhancedReflectionItem): void => {
+    setEditingReflection(reflection.id);
+    setEditForm({
+      content: reflection.content,
+      priority: reflection.priority,
+      rating: reflection.rating || 3,
+    });
+  };
+
+  const handleSaveEdit = (): void => {
+    if (!editingReflection || !editForm.content.trim()) return;
+
+    const category = getCurrentCategoryKey();
+    const updatedReflections = (reflectionData[category] as EnhancedReflectionItem[]).map(
+      (item) =>
+        item.id === editingReflection
+          ? {
+              ...item,
+              content: editForm.content.trim(),
+              priority: editForm.priority,
+              rating: editForm.rating,
+              lastUpdated: new Date().toISOString(),
+            }
+          : item
+    );
+
+    setReflectionData({
+      ...reflectionData,
+      [category]: updatedReflections,
+    });
+
+    setEditingReflection(null);
+    setEditForm({
+      content: "",
+      priority: "Medium",
+      rating: 3,
+    });
+  };
+
+  const handleCancelEdit = (): void => {
+    setEditingReflection(null);
+    setEditForm({
+      content: "",
+      priority: "Medium",
+      rating: 3,
     });
   };
 
@@ -806,15 +875,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       color: "orange",
       description:
         "Objectives, aspirations, and plans for upcoming sprints and beyond",
-    },
-    ...(userRole === 'manager' || userRole === 'admin' ? [{
-      key: "feedback" as TabKey,
-      label: "Manager Feedback",
-      icon: Crown,
-      color: "purple",
-      description:
-        "Manager feedback and guidance for team member development",
-    }] : []),
+    }
   ];
 
   const getCurrentCategoryData = (): EnhancedReflectionItem[] => {
@@ -840,8 +901,16 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       }
     })();
 
-    if (reviewFilter === "all") return data;
-    return data.filter((item) => item.reviewType === reviewFilter);
+    // For managers viewing team members, show only self-reviews (so they can comment/feedback)
+    // For managers viewing their own data, show only manager reviews (they don't have self-reviews)
+    // For regular users, filter by view mode
+    if (userRole === 'manager' && selectedTeamMember) {
+      return data.filter((item) => item.reviewType === 'self'); // Only self-reviews for team members
+    } else if (userRole === 'manager' && !selectedTeamMember) {
+      return data.filter((item) => item.reviewType === 'manager'); // Only manager reviews for self
+    } else {
+      return data.filter((item) => item.reviewType === viewMode);
+    }
   };
 
   const getCurrentCategoryKey = (): keyof Omit<
@@ -929,7 +998,11 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         ...(currentData?.lessonsLearned || []),
         ...(currentData?.futureGoals || []),
       ];
-      const ratedItems = allItems.filter((item) => item.rating);
+      // Filter items based on view mode
+      const filteredItems = viewMode === 'self' 
+        ? allItems.filter((item) => item.reviewType === "self")
+        : allItems.filter((item) => item.reviewType === "manager");
+      const ratedItems = filteredItems.filter((item) => item.rating);
       return ratedItems.length > 0
         ? (
             ratedItems.reduce((sum, item) => sum + (item.rating || 0), 0) /
@@ -956,13 +1029,13 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 tablet:p-6">
       {/* Header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
+        <div className="flex flex-col tablet:flex-row tablet:items-center gap-3 mb-4">
           <BookOpen size={24} className="text-blue-600" />
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800">
+          <div className="flex-1">
+            <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">
               {sprint.name} - Reflection
               {(userRole === 'manager' || userRole === 'admin') && selectedTeamMember && (
                 <span className="text-lg font-normal text-slate-600 ml-2">
@@ -970,7 +1043,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                 </span>
               )}
             </h2>
-            <p className="text-slate-600">
+            <p className="text-sm tablet:text-base text-slate-600">
               {selectedTeamMember 
                 ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s reflections`
                 : "Comprehensive self and manager review covering personal growth, team insights, and future planning"
@@ -988,14 +1061,14 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                 Manager View
               </h3>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col tablet:flex-row tablet:items-center gap-3 tablet:gap-4 mb-3">
               <label className="text-sm font-medium text-purple-700">
                 View reflections for:
               </label>
               <select
                 value={selectedTeamMember}
                 onChange={(e) => setSelectedTeamMember(e.target.value)}
-                className="px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm bg-white"
+                className="px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm bg-white w-full tablet:w-auto"
               >
                 <option value="">My Reflections</option>
                 {board.collaborators
@@ -1007,10 +1080,39 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                   ))}
               </select>
             </div>
+            {!selectedTeamMember && (
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-purple-700">
+                  View Mode:
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setViewMode('self')}
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                      viewMode === 'self'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-white text-purple-600 border border-purple-300 hover:bg-purple-50'
+                    }`}
+                  >
+                    Self Reviews
+                  </button>
+                  <button
+                    onClick={() => setViewMode('manager')}
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                      viewMode === 'manager'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-white text-purple-600 border border-purple-300 hover:bg-purple-50'
+                    }`}
+                  >
+                    Manager Reviews
+                  </button>
+                </div>
+              </div>
+            )}
             <p className="text-xs text-purple-600 mt-2">
               {selectedTeamMember 
-                ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s reflections`
-                : "Viewing your own reflections"
+                ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s self-reviews - comment to provide feedback`
+                : "Viewing your manager reviews"
               }
             </p>
           </div>
@@ -1027,9 +1129,11 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                 Private Reflection
               </h3>
               <p className="text-sm text-blue-700">
-                {userRole === 'manager' || userRole === 'admin' 
-                  ? "As a manager, you can view and provide feedback on team member reflections. Your feedback is private between you and the team member."
-                  : "Your reflections are private and only visible to you and your manager. This is a safe space for honest self-reflection and growth."
+                {userRole === 'manager'
+                  ? "As a manager, you can view team member self-reviews and provide feedback by commenting on them. You can also add manager reviews for team members. You do not create self-reviews."
+                  : userRole === 'admin'
+                  ? "As an admin, you can view team member reflections and manager feedback, but only managers can add manager reviews."
+                  : "Your reflections are private and only visible to you and your manager. You can see manager reviews given to you, but only managers can add them."
                 }
               </p>
             </div>
@@ -1101,24 +1205,17 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <select
-              value={reviewFilter}
-              onChange={(e) =>
-                setReviewFilter(e.target.value as "all" | "self" | "manager")
-              }
-              className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-            >
-              <option value="all">All Reviews</option>
-              <option value="self">Self Reviews</option>
-              <option value="manager">Manager Reviews</option>
-            </select>
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              disabled={!!selectedTeamMember && (userRole !== 'manager' && userRole !== 'admin')}
+              disabled={
+                (!!selectedTeamMember && (userRole !== 'manager' && userRole !== 'admin')) ||
+                (viewMode === 'manager' && userRole !== 'manager') ||
+                (userRole === 'manager' && viewMode === 'self' && !selectedTeamMember)
+              }
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
               {showAddForm ? <X size={16} /> : <Plus size={16} />}
-              {showAddForm ? "Cancel" : selectedTeamMember ? "Add Manager Feedback" : "Add Reflection"}
+              {showAddForm ? "Cancel" : selectedTeamMember ? "Add Manager Review" : (userRole === 'manager' ? "Add Manager Review" : (viewMode === 'self' ? "Add Self Review" : "Add Manager Review"))}
             </button>
           </div>
         </div>
@@ -1133,18 +1230,20 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                     Review Type
                   </label>
                   <select
-                    value={selectedTeamMember ? "manager" : newReflection.reviewType}
+                    value={selectedTeamMember ? "manager" : (userRole === 'manager' ? "manager" : (viewMode === 'manager' ? "manager" : newReflection.reviewType))}
                     onChange={(e) =>
                       setNewReflection({
                         ...newReflection,
                         reviewType: e.target.value as "self" | "manager",
                       })
                     }
-                    disabled={!!selectedTeamMember}
+                    disabled={!!selectedTeamMember || (userRole !== 'manager' && viewMode === 'manager') || (userRole === 'manager' && !selectedTeamMember && viewMode === 'self')}
                     className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-slate-100"
                   >
-                    <option value="self">Self Review</option>
-                    {(userRole === 'manager' || userRole === 'admin') && (
+                    {userRole !== 'manager' && (
+                      <option value="self">Self Review</option>
+                    )}
+                    {userRole === 'manager' && (
                       <option value="manager">Manager Review</option>
                     )}
                   </select>
@@ -1225,7 +1324,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                   onClick={handleAddReflection}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  Add Reflection
+                  {userRole === 'manager' ? "Add Manager Review" : (viewMode === 'self' ? "Add Self Review" : "Add Manager Review")}
                 </button>
                 <button
                   onClick={() => setShowAddForm(false)}
@@ -1299,24 +1398,106 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                       </div>
                     )}
                     {reflection.authorEmail === user?.email && (
-                      <button
-                        onClick={() =>
-                          handleDeleteReflection(
-                            getCurrentCategoryKey(),
-                            reflection.id
-                          )
-                        }
-                        className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleEditReflection(reflection)}
+                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1 rounded transition-colors"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleDeleteReflection(
+                              getCurrentCategoryKey(),
+                              reflection.id
+                            )
+                          }
+                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
 
-                <div className="text-slate-700 leading-relaxed mb-4">
-                  {renderContentWithMentions(reflection.content)}
-                </div>
+                {editingReflection === reflection.id ? (
+                  <div className="bg-slate-50 rounded-lg p-4 mb-4">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Content
+                        </label>
+                        <textarea
+                          value={editForm.content}
+                          onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
+                          className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                          rows={4}
+                          placeholder="Enter your reflection..."
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Priority
+                          </label>
+                          <select
+                            value={editForm.priority}
+                            onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                priority: e.target.value as "Low" | "Medium" | "High",
+                              })
+                            }
+                            className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                          >
+                            <option value="Low">Low Priority</option>
+                            <option value="Medium">Medium Priority</option>
+                            <option value="High">High Priority</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            Rating (1-5 stars)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                onClick={() => setEditForm({ ...editForm, rating: star })}
+                                className={`text-2xl transition-colors ${
+                                  star <= editForm.rating
+                                    ? "text-yellow-400"
+                                    : "text-slate-300 hover:text-yellow-300"
+                                }`}
+                              >
+                                <Star size={20} fill="currentColor" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleSaveEdit}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          Save Changes
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-4 py-2 bg-slate-300 text-slate-700 rounded-lg hover:bg-slate-400 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-slate-700 leading-relaxed mb-4">
+                    {renderContentWithMentions(reflection.content)}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1410,7 +1591,20 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                     )}
 
                     {/* Add Comment */}
-                    <div className="flex gap-2">
+                    <div className="space-y-2">
+                      {reflection.reviewType === 'manager' && viewMode === 'manager' && (
+                        <div className="flex items-center gap-2 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">
+                          <Crown size={12} />
+                          <span>Replying to manager review</span>
+                        </div>
+                      )}
+                      {reflection.reviewType === 'self' && userRole === 'manager' && (
+                        <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                          <User size={12} />
+                          <span>Providing feedback on self-review</span>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
                       <SmartCommentInput
                         value={commentTexts[reflection.id] || ""}
                         onChange={(value) =>
@@ -1425,7 +1619,13 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                             reflection.id
                           )
                         }
-                        placeholder="Add a comment... Use @username to mention users or #task for tasks"
+                        placeholder={
+                          reflection.reviewType === 'manager' 
+                            ? "Reply to manager review... Use @username to mention users or #task for tasks"
+                            : userRole === 'manager' && reflection.reviewType === 'self'
+                            ? "Provide feedback on this self-review... Use @username to mention users or #task for tasks"
+                            : "Add a comment... Use @username to mention users or #task for tasks"
+                        }
                         users={mentionUsers}
                         tasks={tasks}
                       />
@@ -1441,6 +1641,7 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
                       >
                         <Send size={14} />
                       </button>
+                      </div>
                     </div>
                   </div>
                 )}

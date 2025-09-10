@@ -45,62 +45,61 @@ const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
   ).length;
 
   return (
-    <div className="w-full">
-      
+    <div className="w-full max-w-sm mx-auto laptop:mx-0">
       <div className="space-y-2">
 
         {/* Priority Tasks */}
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold">{priorityTasks}</h3>
-              <p className="text-red-100 text-xs font-medium">High Priority</p>
+              <h3 className="text-sm tablet:text-base font-bold">{priorityTasks}</h3>
+              <p className="text-red-100 text-xs tablet:text-sm font-medium">High Priority</p>
             </div>
-            <div className="text-sm opacity-60">🔥</div>
+            <div className="text-sm tablet:text-base opacity-60">🔥</div>
           </div>
         </div>
 
         {/* Overdue Tasks */}
-        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold">{overdueTasks}</h3>
-              <p className="text-orange-100 text-xs font-medium">Overdue</p>
+              <h3 className="text-sm tablet:text-base font-bold">{overdueTasks}</h3>
+              <p className="text-orange-100 text-xs tablet:text-sm font-medium">Overdue</p>
             </div>
-            <div className="text-sm opacity-60">⚠️</div>
+            <div className="text-sm tablet:text-base opacity-60">⚠️</div>
           </div>
         </div>
 
         {/* Upcoming Tasks */}
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold">{upcomingTasks}</h3>
-              <p className="text-blue-100 text-xs font-medium">This Week</p>
+              <h3 className="text-sm tablet:text-base font-bold">{upcomingTasks}</h3>
+              <p className="text-blue-100 text-xs tablet:text-sm font-medium">This Week</p>
             </div>
-            <div className="text-sm opacity-60">📅</div>
+            <div className="text-sm tablet:text-base opacity-60">📅</div>
           </div>
         </div>
 
         {/* Pending Tasks */}
-        <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold">{pendingTasks}</h3>
-              <p className="text-yellow-100 text-xs font-medium">Pending</p>
+              <h3 className="text-sm tablet:text-base font-bold">{pendingTasks}</h3>
+              <p className="text-yellow-100 text-xs tablet:text-sm font-medium">Pending</p>
             </div>
-            <div className="text-sm opacity-60">⏳</div>
+            <div className="text-sm tablet:text-base opacity-60">⏳</div>
           </div>
         </div>
 
         {/* Completed Tasks */}
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold">{completedTasks}</h3>
-              <p className="text-green-100 text-xs font-medium">Completed</p>
+              <h3 className="text-sm tablet:text-base font-bold">{completedTasks}</h3>
+              <p className="text-green-100 text-xs tablet:text-sm font-medium">Completed</p>
             </div>
-            <div className="text-sm opacity-60">✅</div>
+            <div className="text-sm tablet:text-base opacity-60">✅</div>
           </div>
         </div>
 

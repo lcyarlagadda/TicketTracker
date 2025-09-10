@@ -47,7 +47,7 @@ const BoardList: React.FC = () => {
         setAllTasks(combinedTasks);
         setTasksError("");
       } catch (error) {
-        console.error('Error fetching tasks:', error);
+        // Error('Error fetching tasks:', error);
         setTasksError("Failed to load task statistics");
         setAllTasks([]);
       } finally {
@@ -65,7 +65,7 @@ const BoardList: React.FC = () => {
       await dispatch(createBoard({ userId: user.uid, boardData })).unwrap();
       setShowForm(false);
     } catch (error) {
-      console.error('Failed to create board:', error);
+      // Error('Failed to create board:', error);
     }
   };
 
@@ -121,9 +121,9 @@ const BoardList: React.FC = () => {
         </div>
 
         {/* Main Content */}
-        <div className="flex gap-6">
+        <div className="flex flex-col tablet:flex-row gap-6">
           {/* Left Sidebar - Task Stats */}
-          <div className="w-64 flex-shrink-0">
+          <div className="w-full tablet:max-w-sm laptop:w-64 flex-shrink-0">
             {tasksLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -154,7 +154,7 @@ const BoardList: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 tablet:grid-cols-2 laptop:grid-cols-2 desktop:grid-cols-3 gap-6">
                 {boards.map((board) => (
                   <BoardCard key={board.id} board={board} />
                 ))}

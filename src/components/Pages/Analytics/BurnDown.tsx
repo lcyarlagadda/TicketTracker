@@ -111,7 +111,10 @@ const Burndown: React.FC<BurndownManagerProps> = ({ board, tasks }) => {
             (log.desc.includes('done') || log.desc.includes('Done'))
           );
           
-          const completedDate = completionLog?.timestamp?.toDate?.() || task.createdAt?.toDate?.();
+          const completedDate = (completionLog?.timestamp as any)?.toDate?.() || 
+            (typeof completionLog?.timestamp === 'string' ? new Date(completionLog.timestamp) : null) ||
+            (task.createdAt as any)?.toDate?.() || 
+            (typeof task.createdAt === 'string' ? new Date(task.createdAt) : new Date());
           return completedDate && completedDate.toISOString().split('T')[0] <= currentDate;
         });
         
@@ -157,17 +160,17 @@ const Burndown: React.FC<BurndownManagerProps> = ({ board, tasks }) => {
     
     const projectedCompletion = currentVelocity > 0 
       ? latestData ? latestData.actualRemaining / currentVelocity : 0 
-      : Infinity;
+      : latestData && latestData.actualRemaining > 0 ? 999 : 0; // Use 999 as "unknown" instead of Infinity
     
     return {
       remainingPoints: latestData?.actualRemaining || sprintConfig.totalPoints,
       completedPoints: latestData?.completedPoints || 0,
       daysRemaining,
-      velocityNeeded: Math.round(velocityNeeded * 10) / 10,
-      currentVelocity: Math.round(currentVelocity * 10) / 10,
-      projectedCompletion: Math.round(projectedCompletion * 10) / 10,
+      velocityNeeded: isNaN(velocityNeeded) ? 0 : Math.round(velocityNeeded * 10) / 10,
+      currentVelocity: isNaN(currentVelocity) ? 0 : Math.round(currentVelocity * 10) / 10,
+      projectedCompletion: isNaN(projectedCompletion) || !isFinite(projectedCompletion) ? 0 : Math.round(projectedCompletion * 10) / 10,
       isOnTrack: velocityNeeded <= currentVelocity * 1.1, // 10% buffer
-      completionPercentage: ((latestData?.completedPoints || 0) / sprintConfig.totalPoints * 100).toFixed(1)
+      completionPercentage: sprintConfig.totalPoints > 0 ? ((latestData?.completedPoints || 0) / sprintConfig.totalPoints * 100).toFixed(1) : "0"
     };
   }, [burndownData, sprintConfig.totalPoints]);
 
@@ -192,7 +195,7 @@ const Burndown: React.FC<BurndownManagerProps> = ({ board, tasks }) => {
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (error) {
       setSaveStatus('error');
-      console.error('Error saving burndown data:', error);
+      // Error('Error saving burndown data:', error);
     }
   };
 
@@ -232,7 +235,7 @@ const Burndown: React.FC<BurndownManagerProps> = ({ board, tasks }) => {
         note: ''
       });
     } catch (error) {
-      console.error('Error adding manual entry:', error);
+      // Error('Error adding manual entry:', error);
     }
   };
 

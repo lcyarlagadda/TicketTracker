@@ -41,23 +41,23 @@ const SprintRouter: React.FC = () => {
       setSprintLoading(true);
       setError(null);
       try {
-        console.log(`Fetching sprint data for board ${boardId}, sprint ${sprintNo}`);
+        // Fetching sprint data for board
         const sprints = await sprintService.fetchBoardSprints(user.uid, boardId);
-        console.log('All sprints fetched:', sprints.map(s => ({ id: s.id, sprintNumber: s.sprintNumber, name: s.name })));
+        // All sprints fetched
         
         const targetSprintNumber = parseInt(sprintNo);
         const targetSprint = sprints.find(s => s.sprintNumber === targetSprintNumber);
         
-        console.log(`Looking for sprint number ${targetSprintNumber}, found:`, targetSprint ? { id: targetSprint.id, sprintNumber: targetSprint.sprintNumber, name: targetSprint.name } : 'null');
+        // Looking for sprint number
         
         if (!targetSprint) {
           setError(`Sprint ${sprintNo} not found`);
         } else {
           setSprint(targetSprint);
-          console.log('Sprint set successfully:', targetSprint.name);
+          // Sprint set successfully
         }
       } catch (error) {
-        console.error('Error fetching sprint data:', error);
+        // Error('Error fetching sprint data:', error);
         setError('Failed to load sprint data');
       } finally {
         setSprintLoading(false);
@@ -227,12 +227,6 @@ const SprintRouter: React.FC = () => {
                 <p className="text-sm text-slate-500">
                   {currentBoard.title} • Sprint Management & Analytics
                 </p>
-                {/* Debug info - remove after fixing */}
-                {sprint && (
-                  <p className="text-xs text-red-500 mt-1">
-                    Debug: Sprint {sprint.sprintNumber} (ID: {sprint.id})
-                  </p>
-                )}
               </div>
             </div>
             
