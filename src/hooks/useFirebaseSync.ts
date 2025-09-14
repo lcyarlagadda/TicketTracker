@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from './redux';
 import { fetchBoards } from '../store/slices/boardSlice';
-import { fetchTasks, setTasks } from '../store/slices/taskSlice';
+import { fetchTasks } from '../store/slices/taskSlice';
 import { boardService } from '../services/boardService';
 import { taskService } from '../services/taskService';
 
@@ -44,7 +44,8 @@ export const useTasksSync = (boardId: string) => {
 
     // Real-time subscription
     const unsubscribe = taskService.subscribeToTasks(user.uid, boardId, (tasks) => {
-      dispatch(setTasks(tasks));
+      // Use fetchTasks.fulfilled to maintain consistency with Redux patterns
+      dispatch(fetchTasks.fulfilled(tasks, '', { userId: user.uid, boardId }));
     });
 
     return () => unsubscribe();

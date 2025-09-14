@@ -478,7 +478,6 @@ export interface EnhancedReflectionItem {
   id: number;
   content: string;
   category: string;
-  priority: 'Low' | 'Medium' | 'High';
   author: string;
   authorEmail: string;
   createdAt: string;
@@ -499,21 +498,35 @@ export interface SprintReflectionData {
   lastUpdated: string;
 }
 
-// Private reflection data structure for user-manager conversations
+// Simplified reflection data structure for user-manager conversations
+export interface CategoryReflection {
+  userReview?: {
+    id: string;
+    content: string;
+    author: string;
+    authorEmail: string;
+    createdAt: string;
+  };
+  managerResponse?: {
+    id: string;
+    content: string;
+    author: string;
+    authorEmail: string;
+    createdAt: string;
+    rating: number; // 1-5 star rating
+  };
+}
+
 export interface PrivateReflectionData {
   sprintId: string;
   sprintNumber: number;
   userId: string; // The user this reflection belongs to
   userEmail: string;
   userName: string;
-  managerId?: string; // The manager reviewing this reflection
-  managerEmail?: string;
-  managerName?: string;
-  personalGrowth: EnhancedReflectionItem[];
-  teamInsights: EnhancedReflectionItem[];
-  lessonsLearned: EnhancedReflectionItem[];
-  futureGoals: EnhancedReflectionItem[];
-  managerFeedback: EnhancedReflectionItem[]; // Manager's feedback on the reflection
+  personalGrowth: CategoryReflection;
+  teamInsights: CategoryReflection;
+  lessonsLearned: CategoryReflection;
+  futureGoals: CategoryReflection;
   lastUpdated: string;
   isPrivate: boolean; // Always true for private reflections
 }
@@ -521,9 +534,14 @@ export interface PrivateReflectionData {
 export interface NewReflectionForm {
   content: string;
   category: string;
-  priority: 'Low' | 'Medium' | 'High';
   reviewType: 'self' | 'manager';
-  rating: number;
+  rating?: number;
+}
+
+export interface NewCategoryReflectionForm {
+  content: string;
+  category: string;
+  rating?: number; // Only for manager responses
 }
 
 export type TabKey = 'personal' | 'team' | 'lessons' | 'goals' | 'feedback';

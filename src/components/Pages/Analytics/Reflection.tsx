@@ -1,5 +1,5 @@
-// components/Analytics/EnhancedReflection.tsx
-import React, { useState, useEffect, useMemo, useRef } from "react";
+// components/Analytics/ReflectionNew.tsx - Simplified Reflection System
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   BookOpen,
   Users,
@@ -7,313 +7,33 @@ import {
   Target,
   Plus,
   X,
-  Trash2,
-  User,
-  Crown,
   Star,
   MessageCircle,
-  Heart,
-  Send,
-  Hash,
-  AtSign,
-  Shield,
-  Edit3,
+  User,
+  Crown,
 } from "lucide-react";
 import { useAppSelector } from "../../../hooks/redux";
-import { notificationService } from "../../../services/notificationService";
 import {
   Task,
   Board,
   Sprint,
-  SprintReflectionData,
   PrivateReflectionData,
-  NewReflectionForm,
+  NewCategoryReflectionForm,
+  CategoryReflection,
   TabKey,
-  TabConfig,
-  EnhancedReflectionItem,
-  ReflectionComment,
-  MentionTask,
-  MentionUser,
 } from "../../../store/types/types";
 import { useParams } from "react-router-dom";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "../../../firebase";
 import { sprintService } from "../../../services/sprintService";
 import { privateReflectionService } from "../../../services/privateReflectionService";
-import { SmartCommentInput } from "../../Atoms/TaskSelectionModal";
-import TaskModal from "../TaskModal";
 
-interface EnhancedReflectionTabProps {
+interface ReflectionProps {
   board: Board;
   tasks: Task[];
 }
 
-// Enhanced SmartReflectionInput component with user and task mentions
-interface EnhancedSmartReflectionInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  placeholder: string;
-  tasks: MentionTask[];
-  users: MentionUser[];
-  className?: string;
-  rows?: number;
-  isTextarea?: boolean;
-}
-
-const EnhancedSmartReflectionInput: React.FC<EnhancedSmartReflectionInputProps> = ({
-  value,
-  onChange,
-  onSubmit,
-  placeholder,
-  tasks,
-  users,
-  className = "",
-  rows = 1,
-  isTextarea = false
-}) => {
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
-  const [showTaskModal, setShowTaskModal] = useState(false);
-  const [mentionState, setMentionState] = useState<{
-    isOpen: boolean;
-    type: 'users' | null;
-    position: { top: number; left: number };
-    searchTerm: string;
-    startIndex: number;
-  }>({
-    isOpen: false,
-    type: null,
-    position: { top: 0, left: 0 },
-    searchTerm: '',
-    startIndex: 0
-  });
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    const cursorPosition = e.target.selectionStart || 0;
-    
-    onChange(newValue);
-    
-    // Check for @ mentions
-    const beforeCursor = newValue.slice(0, cursorPosition);
-    const atMatch = beforeCursor.match(/@(\w*)$/);
-    
-    if (atMatch) {
-      const searchTerm = atMatch[1];
-      const startIndex = cursorPosition - atMatch[0].length;
-      
-      // Calculate position for dropdown
-      if (inputRef.current) {
-        const rect = inputRef.current.getBoundingClientRect();
-        const textWidth = getTextWidth(beforeCursor.slice(0, startIndex), inputRef.current);
-        
-        setMentionState({
-          isOpen: true,
-          type: 'users',
-          position: {
-            top: rect.bottom + 4,
-            left: rect.left + textWidth
-          },
-          searchTerm,
-          startIndex
-        });
-      }
-    } else {
-      setMentionState(prev => ({ ...prev, isOpen: false }));
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === '#') {
-      // Open task modal for # mentions
-      e.preventDefault();
-      setShowTaskModal(true);
-    } else if (e.key === 'Enter' && !e.shiftKey && !isTextarea && !mentionState.isOpen) {
-      e.preventDefault();
-      onSubmit();
-    } else if (e.key === 'Escape') {
-      setMentionState(prev => ({ ...prev, isOpen: false }));
-    }
-  };
-
-  const getTextWidth = (text: string, element: HTMLInputElement | HTMLTextAreaElement): number => {
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (context) {
-      const style = window.getComputedStyle(element);
-      context.font = `${style.fontSize} ${style.fontFamily}`;
-      return context.measureText(text).width;
-    }
-    return 0;
-  };
-
-  const handleUserMentionSelect = (user: MentionUser) => {
-    const beforeMention = value.slice(0, mentionState.startIndex);
-    const afterCursor = value.slice(inputRef.current?.selectionStart || 0);
-    const mentionText = `@${user.name}`;
-    
-    const newValue = beforeMention + mentionText + ' ' + afterCursor;
-    onChange(newValue);
-    setMentionState(prev => ({ ...prev, isOpen: false }));
-    
-    // Focus back to input
-    setTimeout(() => {
-      if (inputRef.current) {
-        const newCursorPosition = beforeMention.length + mentionText.length + 1;
-        inputRef.current.focus();
-        inputRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-      }
-    }, 0);
-  };
-
-  const handleTaskSelect = (task: MentionTask) => {
-    const cursorPosition = inputRef.current?.selectionStart || value.length;
-    const beforeCursor = value.slice(0, cursorPosition);
-    const afterCursor = value.slice(cursorPosition);
-    
-    const taskReference = `#${task.id.slice(-6)}`;
-    const newValue = beforeCursor + taskReference + ' ' + afterCursor;
-    onChange(newValue);
-    
-    // Focus back to input
-    setTimeout(() => {
-      if (inputRef.current) {
-        const newCursorPosition = beforeCursor.length + taskReference.length + 1;
-        inputRef.current.focus();
-        inputRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-      }
-    }, 0);
-  };
-
-  const filteredUsers = useMemo(() => {
-    if (!mentionState.isOpen || mentionState.type !== 'users') return [];
-    
-    if (!mentionState.searchTerm) return users.slice(0, 5);
-    
-    return users.filter(user => 
-      user.name.toLowerCase().includes(mentionState.searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(mentionState.searchTerm.toLowerCase())
-    ).slice(0, 5);
-  }, [mentionState, users]);
-
-  const InputComponent = isTextarea ? 'textarea' : 'input';
-
-  return (
-    <>
-      <InputComponent
-        ref={inputRef as any}
-        type={isTextarea ? undefined : "text"}
-        value={value}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyPress}
-        placeholder={placeholder}
-        className={className}
-        rows={isTextarea ? rows : undefined}
-      />
-      
-      {/* User Mention Dropdown */}
-      {mentionState.isOpen && mentionState.type === 'users' && (
-        <div 
-          className="fixed bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-40 overflow-y-auto"
-          style={{ 
-            top: mentionState.position.top, 
-            left: mentionState.position.left,
-            minWidth: '200px'
-          }}
-        >
-          <div className="p-2">
-            <div className="flex items-center gap-2 px-2 py-1 text-xs text-slate-500 border-b">
-              <AtSign size={12} />
-              <span>Mention User</span>
-            </div>
-            {filteredUsers.map((user) => (
-              <button
-                key={user.id}
-                onClick={() => handleUserMentionSelect(user)}
-                className="w-full text-left px-2 py-2 hover:bg-blue-50 rounded text-sm flex items-center gap-2"
-              >
-                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div className="font-medium">{user.name}</div>
-                  <div className="text-xs text-slate-500">{user.email}</div>
-                </div>
-              </button>
-            ))}
-            {filteredUsers.length === 0 && (
-              <div className="px-2 py-3 text-sm text-slate-500 text-center">
-                No users found
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Task Selection Modal - Convert to simple task reference modal */}
-      {showTaskModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <Hash size={20} className="text-blue-600" />
-                <h2 className="text-xl font-bold text-slate-800">Select Task to Reference</h2>
-              </div>
-              <button
-                onClick={() => setShowTaskModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Task List */}
-            <div className="max-h-96 overflow-y-auto">
-              {tasks.length > 0 ? (
-                <div className="p-4 space-y-2">
-                  {tasks.map(task => (
-                    <button
-                      key={task.id}
-                      onClick={() => {
-                        handleTaskSelect(task);
-                        setShowTaskModal(false);
-                      }}
-                      className="w-full text-left p-4 hover:bg-blue-50 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors group"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Hash size={16} className="text-slate-400 group-hover:text-blue-600" />
-                          <span className="text-sm font-mono text-slate-500 group-hover:text-blue-600">
-                            #{task.id.slice(-6)}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-slate-800 group-hover:text-blue-800 truncate">
-                            {task.name}
-                          </h3>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-8 text-center text-slate-500">
-                  <Hash size={48} className="mx-auto mb-4 text-slate-300" />
-                  <h3 className="text-lg font-medium mb-2">No tasks found</h3>
-                  <p className="text-sm">No tasks available to reference</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-};
-
-const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
-  board,
-  tasks,
-}) => {
+const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
   const { user } = useAppSelector((state) => state.auth);
   const { sprintNo } = useParams();
 
@@ -324,106 +44,87 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
     userId: "",
     userEmail: "",
     userName: "",
-    personalGrowth: [],
-    teamInsights: [],
-    lessonsLearned: [],
-    futureGoals: [],
-    managerFeedback: [],
+    personalGrowth: {},
+    teamInsights: {},
+    lessonsLearned: {},
+    futureGoals: {},
     lastUpdated: "",
     isPrivate: true,
   });
   const [userRole, setUserRole] = useState<'admin' | 'manager' | 'user'>('user');
   const [selectedTeamMember, setSelectedTeamMember] = useState<string>('');
   const [teamReflections, setTeamReflections] = useState<{[userId: string]: PrivateReflectionData}>({});
-  const [viewMode, setViewMode] = useState<'self' | 'manager'>('self'); // New state for view mode
+  const [uidToAccessMap, setUidToAccessMap] = useState<{[uid: string]: any}>({});
 
   const [activeTab, setActiveTab] = useState<TabKey>("personal");
-  const [newReflection, setNewReflection] = useState<NewReflectionForm>({
+  const [newReflection, setNewReflection] = useState<NewCategoryReflectionForm>({
     content: "",
     category: "",
-    priority: "Medium",
-    reviewType: "self",
-    rating: 3,
+    rating: undefined,
   });
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
-  // Removed reviewFilter as it's replaced by viewMode
-  const [commentTexts, setCommentTexts] = useState<{ [key: number]: string }>(
-    {}
-  );
-  const [showComments, setShowComments] = useState<{ [key: number]: boolean }>(
-    {}
-  );
-  const [editingReflection, setEditingReflection] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<{
-    content: string;
-    priority: "Low" | "Medium" | "High";
-    rating: number;
-  }>({
-    content: "",
-    priority: "Medium",
-    rating: 3,
-  });
 
-  // Task modal state
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [showTaskModal, setShowTaskModal] = useState(false);
-
-  // Prepare tasks and users for mentions
-  const mentionTasks = useMemo(() => {
-    return tasks.map((task) => ({
-      id: task.id,
-      name: task.title,
-    }));
-  }, [tasks]);
-
-  const mentionUsers = useMemo(() => {
-    return board.collaborators.map(collab => ({
-      id: collab.email,
-      name: collab.name,
-      email: collab.email
-    }));
-  }, [board.collaborators]);
-
-  // Helper function to extract mentions from text
-  const extractMentions = (text: string): MentionUser[] => {
-    const mentionMatches = text.match(/@(\w+)/g);
-    if (!mentionMatches) return [];
-    
-    return mentionMatches
-      .map(match => match.slice(1)) // Remove @ symbol
-      .map(username => mentionUsers.find(user => user.name === username))
-      .filter((user): user is MentionUser => user !== undefined);
-  };
-
-  // Fetch team reflections for managers
+  // Fetch team reflections for managers only
   const fetchTeamReflections = async (sprintId: string) => {
-    if (!user || !board.id || (userRole !== 'manager' && userRole !== 'admin')) return;
+    console.log('fetchTeamReflections called with:', { userRole, boardId: board.id, sprintId });
+    if (!user || !board.id || userRole !== 'manager') {
+      console.log('fetchTeamReflections early return:', { user: !!user, boardId: board.id, userRole });
+      return;
+    }
 
     try {
       const teamReflectionsData: {[userId: string]: PrivateReflectionData} = {};
       
-      // Fetch reflections for all team members
+      // Get all board access documents to find user UIDs
+      const boardAccessQuery = query(
+        collection(db, 'boardAccess'),
+        where('boardId', '==', board.id)
+      );
+      const accessSnapshot = await getDocs(boardAccessQuery);
+      
+      // Create a map of UID to boardAccess data
+      const uidToAccessMap: {[uid: string]: any} = {};
+      accessSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        uidToAccessMap[data.userId] = data;
+      });
+      setUidToAccessMap(uidToAccessMap);
+      
+      // Fetch reflections for all team members using UID matching
       for (const collaborator of board.collaborators) {
         if (collaborator.email !== user.email) {
-          try {
-            const reflection = await privateReflectionService.getPrivateReflection(
-              collaborator.email, // Using email as userId for now
-              board.id,
-              sprintId,
-              user.uid // Pass the requesting user (manager) UID
-            );
-            if (reflection) {
-              teamReflectionsData[collaborator.email] = reflection;
+          let reflection: PrivateReflectionData | null = null;
+          
+          // Try each UID from boardAccess to see if any match this collaborator
+          for (const [uid, accessData] of Object.entries(uidToAccessMap)) {
+            try {
+              const testReflection = await privateReflectionService.getPrivateReflection(
+                uid,
+                board.id,
+                sprintId,
+                user.uid
+              );
+              if (testReflection && testReflection.userEmail === collaborator.email) {
+                reflection = testReflection;
+                console.log(`Found reflection for ${collaborator.email} using UID ${uid}:`, reflection);
+                break;
+              }
+            } catch (error) {
+              // This UID doesn't match, continue to next one
+              continue;
             }
-          } catch (error) {
-            // No reflection found for this collaborator
+          }
+          
+          if (reflection) {
+            teamReflectionsData[collaborator.email] = reflection;
           }
         }
       }
       
+      console.log('Team reflections fetched:', teamReflectionsData);
       setTeamReflections(teamReflectionsData);
     } catch (error) {
-      // Error fetching team reflections
+      console.error('Error fetching team reflections:', error);
     }
   };
 
@@ -433,57 +134,56 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
       if (!user || !board.id || !sprintNo) return;
 
       try {
-        // Get user's role in the board
-        const userCollaborator = board.collaborators.find(c => c.email === user.email);
-        if (userCollaborator) {
-          setUserRole(userCollaborator.role);
-        }
-
-        const sprints = await sprintService.fetchBoardSprints(
-          user.uid,
-          board.id
-        );
-        const targetSprint = sprints.find(
-          (s) => s.sprintNumber === parseInt(sprintNo)
-        );
+        const targetSprint = await sprintService.fetchBoardSprints(user.uid, board.id);
+        const sprint = targetSprint.find(s => s.sprintNumber === parseInt(sprintNo));
         
-        if (targetSprint) {
-          setSprint(targetSprint);
-
-          // Fetch private reflection data
-          const privateReflection = await privateReflectionService.getPrivateReflection(
-            user.uid,
-            board.id,
-            targetSprint.id
-          );
-
-          if (privateReflection) {
-            setReflectionData(privateReflection);
+        if (sprint) {
+          setSprint(sprint);
+          
+          // Determine user role
+          const accessDoc = await getDocs(query(
+            collection(db, 'boardAccess'),
+            where('boardId', '==', board.id),
+            where('userId', '==', user.uid)
+          ));
+          
+          if (accessDoc.docs.length > 0) {
+            const role = accessDoc.docs[0].data().role;
+            console.log('User role from boardAccess:', role);
+            setUserRole(role);
+          } else if (board.createdBy.uid === user.uid) {
+            console.log('User is board creator, setting role to admin');
+            setUserRole('admin');
           } else {
-            // Initialize new private reflection
-            setReflectionData({
-              sprintId: targetSprint.id,
-              sprintNumber: targetSprint.sprintNumber,
-              userId: user.uid,
-              userEmail: user.email || "",
-              userName: user.displayName || user.email || "Current User",
-              personalGrowth: [],
-              teamInsights: [],
-              lessonsLearned: [],
-              futureGoals: [],
-              managerFeedback: [],
-              lastUpdated: "",
-              isPrivate: true,
-            });
+            console.log('No access found, setting role to user');
+            setUserRole('user');
           }
 
-          // Fetch team reflections if user is manager/admin
-          if (userRole === 'manager' || userRole === 'admin') {
-            await fetchTeamReflections(targetSprint.id);
+          // Fetch user's own reflection data
+          try {
+            const reflection = await privateReflectionService.getPrivateReflection(
+              user.uid,
+              board.id,
+              sprint.id,
+              user.uid
+            );
+            if (reflection) {
+              setReflectionData(reflection);
+            }
+          } catch (error) {
+            console.log('No reflection data found for user');
+          }
+
+          // Fetch team reflections if user is manager only
+          const currentRole = accessDoc.docs.length > 0 ? accessDoc.docs[0].data().role : 
+                             (board.createdBy.uid === user.uid ? 'admin' : 'user');
+          console.log('Current role for team reflections fetch:', currentRole);
+          if (currentRole === 'manager') {
+            await fetchTeamReflections(sprint.id);
           }
         }
       } catch (error) {
-        // Error fetching sprint data
+        console.error('Error fetching sprint data:', error);
       }
     };
 
@@ -491,10 +191,39 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
   }, [user, board.id, sprintNo, board, userRole]);
 
   // Auto-save reflection data
-  const saveReflectionData = async (): Promise<void> => {
+  const saveReflectionData = useCallback(async (): Promise<void> => {
     if (!user || !board.id || !sprint) return;
 
+    // Check if there's actual content to save
+    const hasContent = Object.values(reflectionData).some(
+      (category) => typeof category === 'object' && category !== null && 
+      (category.userReview || category.managerResponse)
+    );
+    
+    if (!hasContent) {
+      console.log('No content to save, skipping auto-save');
+      return;
+    }
+
     try {
+      // Clean the data to remove undefined values
+      const cleanReflectionData = (obj: any): any => {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(cleanReflectionData);
+        
+        const cleaned: any = {};
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          if (value !== undefined) {
+            cleaned[key] = cleanReflectionData(value);
+          }
+        });
+        return cleaned;
+      };
+
+      const cleanedData = cleanReflectionData(reflectionData);
+      console.log('Saving reflection data with content:', cleanedData);
+      
       await privateReflectionService.savePrivateReflection(
         user.uid,
         user.email || "",
@@ -502,53 +231,37 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         board.id,
         sprint.id,
         sprint.sprintNumber,
-        reflectionData
+        cleanedData
       );
+      console.log('Reflection data saved successfully');
     } catch (error) {
-      // Error saving reflection data
+      console.error('Error saving reflection data:', error);
     }
-  };
+  }, [user, board.id, sprint, reflectionData]);
 
   useEffect(() => {
-    if (
-      Object.values(reflectionData).some(
-        (arr) => Array.isArray(arr) && arr.length > 0
-      ) &&
-      sprint
-    ) {
-      const timeoutId = setTimeout(saveReflectionData, 1000);
+    const hasContent = Object.values(reflectionData).some(
+      (category) => typeof category === 'object' && category !== null && 
+      (category.userReview || category.managerResponse)
+    );
+    
+    if (sprint && reflectionData && hasContent) {
+      const timeoutId = setTimeout(saveReflectionData, 2000);
       return () => clearTimeout(timeoutId);
     }
     return undefined;
-  }, [reflectionData, sprint]);
+  }, [reflectionData, sprint, saveReflectionData]);
 
-  const handleAddReflection = (): void => {
+  const handleAddReflection = async (): Promise<void> => {
     if (!newReflection.content.trim() || !user) return;
     
-    // Prevent non-managers from adding manager reviews
-    if (viewMode === 'manager' && userRole !== 'manager') {
-      return;
-    }
-    
-    // Prevent managers from adding self reviews
-    if (userRole === 'manager' && viewMode === 'self' && !selectedTeamMember) {
-      return;
-    }
-
-    const reflection: EnhancedReflectionItem = {
-      id: Date.now(),
+    console.log('Adding reflection:', {
       content: newReflection.content.trim(),
       category: newReflection.category,
-      priority: newReflection.priority,
-      author: user.displayName || user.email || "Current User",
-      authorEmail: user.email || "",
-      createdAt: new Date().toISOString(),
-      tags: [],
-      reviewType: selectedTeamMember ? "manager" : (userRole === 'manager' ? "manager" : (viewMode === 'manager' ? "manager" : newReflection.reviewType)),
-      rating: newReflection.rating,
-      comments: [],
-      likes: [],
-    };
+      activeTab,
+      selectedTeamMember,
+      userRole
+    });
 
     const category =
       activeTab === "personal"
@@ -557,774 +270,249 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
         ? "teamInsights"
         : activeTab === "lessons"
         ? "lessonsLearned"
-        : activeTab === "goals"
-        ? "futureGoals"
-        : "managerFeedback";
+        : "futureGoals";
 
-    // If viewing team member reflections, save to their data
+    const newItem = {
+      id: Date.now().toString(),
+      content: newReflection.content.trim(),
+      author: user.displayName || user.email || "Current User",
+      authorEmail: user.email || "",
+      createdAt: new Date().toISOString(),
+      ...(selectedTeamMember && (userRole === 'manager' || userRole === 'admin') && { rating: newReflection.rating || 0 })
+    };
+
+    // If viewing team member reflections, save manager response to their data
     if (selectedTeamMember && (userRole === 'manager' || userRole === 'admin')) {
       const teamMemberData = teamReflections[selectedTeamMember];
       if (teamMemberData) {
         const updatedTeamMemberData = {
           ...teamMemberData,
-          [category]: [...(teamMemberData[category] || []), reflection],
+          [category]: {
+            ...teamMemberData[category],
+            managerResponse: newItem
+          }
         };
         setTeamReflections({
           ...teamReflections,
           [selectedTeamMember]: updatedTeamMemberData
         });
         
-        // Save to the team member's reflection data
-        privateReflectionService.savePrivateReflection(
-          selectedTeamMember,
-          teamMemberData.userEmail,
-          teamMemberData.userName,
-          board.id,
-          sprint?.id || "",
-          sprint?.sprintNumber || 0,
-          updatedTeamMemberData
-        );
+        // Find the UID for this team member
+        let teamMemberUid = null;
+        for (const [uid, accessData] of Object.entries(uidToAccessMap)) {
+          try {
+            const testReflection = await privateReflectionService.getPrivateReflection(
+              uid,
+              board.id,
+              sprint?.id || "",
+              user.uid
+            );
+            if (testReflection && testReflection.userEmail === selectedTeamMember) {
+              teamMemberUid = uid;
+              break;
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+        
+        if (teamMemberUid) {
+          // Save to the team member's reflection data using their UID
+          privateReflectionService.savePrivateReflection(
+            teamMemberUid,
+            teamMemberData.userEmail,
+            teamMemberData.userName,
+            board.id,
+            sprint?.id || "",
+            sprint?.sprintNumber || 0,
+            updatedTeamMemberData
+          );
+          console.log(`Saved manager response for ${selectedTeamMember} using UID ${teamMemberUid}`);
+        } else {
+          console.error(`Could not find UID for team member ${selectedTeamMember}`);
+        }
       }
     } else {
-      // Save to current user's reflection data
-      setReflectionData({
+      // Save user review to current user's reflection data
+      const updatedReflectionData = {
         ...reflectionData,
-        [category]: [...(reflectionData[category] || []), reflection],
-      });
+        [category]: {
+          ...reflectionData[category],
+          userReview: newItem
+        }
+      };
+      console.log('Updated reflection data:', updatedReflectionData);
+      setReflectionData(updatedReflectionData);
     }
 
     setNewReflection({
       content: "",
       category: "",
-      priority: "Medium",
-      reviewType: "self",
-      rating: 3,
+      rating: undefined,
     });
     setShowAddForm(false);
+  };
 
-    // Send notifications for mentions in background
-    const mentionedUsers = extractMentions(newReflection.content.trim());
-    if (mentionedUsers.length > 0) {
-      const boardUrl = `${window.location.origin}/board/${board.id}`;
-      mentionedUsers.forEach((mentionedUser) => {
-        notificationService.notifyMentioned({
-          mentionedEmail: mentionedUser.email,
-          mentionedName: mentionedUser.name,
-          mentionedBy: user.displayName || user.email || 'Unknown User',
-          boardName: board.name,
-          context: 'reflection',
-          message: `${user.displayName || user.email} mentioned you in a reflection: "${newReflection.content.trim()}"`,
-          boardUrl,
-        });
-      });
-      // Reflection mention notifications queued
+  const getCurrentCategoryData = (): CategoryReflection => {
+    const category =
+      activeTab === "personal"
+        ? "personalGrowth"
+        : activeTab === "team"
+        ? "teamInsights"
+        : activeTab === "lessons"
+        ? "lessonsLearned"
+        : "futureGoals";
+
+    if (selectedTeamMember && (userRole === 'manager' || userRole === 'admin')) {
+      const teamMemberData = teamReflections[selectedTeamMember];
+      return teamMemberData ? teamMemberData[category] : {};
     }
+    
+    return reflectionData[category] || {};
   };
 
-  const handleDeleteReflection = (
-    category: keyof Omit<
-      SprintReflectionData,
-      "sprintId" | "sprintNumber" | "lastUpdated"
-    >,
-    id: number
-  ): void => {
-    setReflectionData({
-      ...reflectionData,
-      [category]: (reflectionData[category] as EnhancedReflectionItem[]).filter(
-        (item) => item.id !== id
-      ),
-    });
-  };
-
-  const handleLikeReflection = (
-    category: keyof Omit<
-      SprintReflectionData,
-      "sprintId" | "sprintNumber" | "lastUpdated"
-    >,
-    id: number
-  ): void => {
-    if (!user?.email) return;
-
-    setReflectionData({
-      ...reflectionData,
-      [category]: (reflectionData[category] as EnhancedReflectionItem[]).map(
-        (item) => {
-          if (item.id === id) {
-            if (item.authorEmail === user.email) {
-              return item;
-            }
-
-            const hasLiked = item.likes.includes(user.email);
-            const newLikes = hasLiked
-              ? item.likes.filter((email) => email !== user.email)
-              : [...item.likes, user.email];
-
-            return { ...item, likes: newLikes };
-          }
-          return item;
-        }
-      ),
-    });
-  };
-
-  const handleAddComment = (
-    category: keyof Omit<
-      SprintReflectionData,
-      "sprintId" | "sprintNumber" | "lastUpdated"
-    >,
-    itemId: number
-  ): void => {
-    const commentText = commentTexts[itemId]?.trim();
-    if (!commentText || !user) return;
-
-    const newComment: ReflectionComment = {
-      id: `${Date.now()}_${Math.random()}`,
-      text: commentText,
-      author: user.displayName || user.email || "Current User",
-      authorEmail: user.email || "",
-      createdAt: new Date().toISOString(),
-      likes: [],
-    };
-
-    setReflectionData({
-      ...reflectionData,
-      [category]: (reflectionData[category] as EnhancedReflectionItem[]).map(
-        (item) =>
-          item.id === itemId
-            ? { ...item, comments: [...item.comments, newComment] }
-            : item
-      ),
-    });
-
-    setCommentTexts({ ...commentTexts, [itemId]: "" });
-
-    // Send notifications for mentions in comments in background
-    const mentionedUsers = extractMentions(commentText);
-    if (mentionedUsers.length > 0) {
-      const boardUrl = `${window.location.origin}/board/${board.id}`;
-      mentionedUsers.forEach((mentionedUser) => {
-        notificationService.notifyMentioned({
-          mentionedEmail: mentionedUser.email,
-          mentionedName: mentionedUser.name,
-          mentionedBy: user.displayName || user.email || 'Unknown User',
-          boardName: board.name,
-          context: 'reflection',
-          message: `${user.displayName || user.email} mentioned you in a reflection comment: "${commentText}"`,
-          boardUrl,
-        });
-      });
-      // Reflection comment mention notifications queued
+  const canAddUserReview = (): boolean => {
+    if (userRole === 'manager') {
+      return false; // Managers can't add user reviews (they only provide manager responses)
     }
-  };
-
-  const handleLikeComment = (
-    category: keyof Omit<
-      SprintReflectionData,
-      "sprintId" | "sprintNumber" | "lastUpdated"
-    >,
-    itemId: number,
-    commentId: string
-  ): void => {
-    if (!user?.email) return;
-
-    setReflectionData({
-      ...reflectionData,
-      [category]: (reflectionData[category] as EnhancedReflectionItem[]).map(
-        (item) => {
-          if (item.id === itemId) {
-            const updatedComments = item.comments.map((comment) => {
-              if (comment.id === commentId) {
-                if (comment.authorEmail === user.email) {
-                  return comment;
-                }
-
-                const hasLiked = comment.likes.includes(user.email);
-                const newLikes = hasLiked
-                  ? comment.likes.filter((email) => email !== user.email)
-                  : [...comment.likes, user.email];
-
-                return { ...comment, likes: newLikes };
-              }
-              return comment;
-            });
-            return { ...item, comments: updatedComments };
-          }
-          return item;
-        }
-      ),
-    });
-  };
-
-  const handleEditReflection = (reflection: EnhancedReflectionItem): void => {
-    setEditingReflection(reflection.id);
-    setEditForm({
-      content: reflection.content,
-      priority: reflection.priority,
-      rating: reflection.rating || 3,
-    });
-  };
-
-  const handleSaveEdit = (): void => {
-    if (!editingReflection || !editForm.content.trim()) return;
-
-    const category = getCurrentCategoryKey();
-    const updatedReflections = (reflectionData[category] as EnhancedReflectionItem[]).map(
-      (item) =>
-        item.id === editingReflection
-          ? {
-              ...item,
-              content: editForm.content.trim(),
-              priority: editForm.priority,
-              rating: editForm.rating,
-              lastUpdated: new Date().toISOString(),
-            }
-          : item
-    );
-
-    setReflectionData({
-      ...reflectionData,
-      [category]: updatedReflections,
-    });
-
-    setEditingReflection(null);
-    setEditForm({
-      content: "",
-      priority: "Medium",
-      rating: 3,
-    });
-  };
-
-  const handleCancelEdit = (): void => {
-    setEditingReflection(null);
-    setEditForm({
-      content: "",
-      priority: "Medium",
-      rating: 3,
-    });
-  };
-
-  // Enhanced render content with clickable task mentions
-  const renderContentWithMentions = (content: string) => {
-    const parts = content.split(/(@\w+|#\w+)/g);
-
-    return parts.map((part, index) => {
-      if (part.startsWith("@")) {
-        const username = part.slice(1);
-        const user = mentionUsers.find(u => u.name === username);
-        return (
-          <span
-            key={index}
-            className="bg-blue-100 text-blue-700 px-1 rounded font-medium"
-            title={user?.email}
-          >
-            {part}
-          </span>
-        );
-      } else if (part.startsWith("#")) {
-        const taskRef = part.slice(1);
-        const task = tasks.find((t) => t.id.slice(-6) === taskRef);
-        return (
-          <button
-            key={index}
-            onClick={() => {
-              if (task) {
-                setSelectedTask(task);
-                setShowTaskModal(true);
-              }
-            }}
-            className="bg-green-100 text-green-700 px-1 rounded font-medium hover:bg-green-200 transition-colors cursor-pointer"
-            title={task?.title || `Task ${taskRef}`}
-          >
-            {part}
-          </button>
-        );
-      }
-      return part;
-    });
-  };
-
-  const tabs: TabConfig[] = [
-    {
-      key: "personal",
-      label: "Personal Growth",
-      icon: User,
-      color: "blue",
-      description:
-        "Your individual development, skills gained, and personal achievements",
-    },
-    {
-      key: "team",
-      label: "Team Insights",
-      icon: Users,
-      color: "green",
-      description:
-        "Observations about team dynamics, collaboration, and collective achievements",
-    },
-    {
-      key: "lessons",
-      label: "Lessons Learned",
-      icon: Lightbulb,
-      color: "yellow",
-      description:
-        "Key takeaways, insights, and knowledge gained from experiences",
-    },
-    {
-      key: "goals",
-      label: "Future Goals",
-      icon: Target,
-      color: "orange",
-      description:
-        "Objectives, aspirations, and plans for upcoming sprints and beyond",
+    if (selectedTeamMember) {
+      return false; // Can't add user reviews when viewing team members
     }
-  ];
-
-  const getCurrentCategoryData = (): EnhancedReflectionItem[] => {
-    // For managers, show selected team member's data or current user's data
-    const currentData = (userRole === 'manager' || userRole === 'admin') && selectedTeamMember 
-      ? teamReflections[selectedTeamMember] 
-      : reflectionData;
-
-    const data = (() => {
-      switch (activeTab) {
-        case "personal":
-          return currentData?.personalGrowth || [];
-        case "team":
-          return currentData?.teamInsights || [];
-        case "lessons":
-          return currentData?.lessonsLearned || [];
-        case "goals":
-          return currentData?.futureGoals || [];
-        case "feedback":
-          return currentData?.managerFeedback || [];
-        default:
-          return [];
-      }
-    })();
-
-    // For managers viewing team members, show only self-reviews (so they can comment/feedback)
-    // For managers viewing their own data, show only manager reviews (they don't have self-reviews)
-    // For regular users, filter by view mode
-    if (userRole === 'manager' && selectedTeamMember) {
-      return data.filter((item) => item.reviewType === 'self'); // Only self-reviews for team members
-    } else if (userRole === 'manager' && !selectedTeamMember) {
-      return data.filter((item) => item.reviewType === 'manager'); // Only manager reviews for self
-    } else {
-      return data.filter((item) => item.reviewType === viewMode);
-    }
+    const categoryData = getCurrentCategoryData();
+    return !categoryData.userReview; // Can add if no user review exists
   };
 
-  const getCurrentCategoryKey = (): keyof Omit<
-    SprintReflectionData,
-    "sprintId" | "sprintNumber" | "lastUpdated"
-  > => {
-    switch (activeTab) {
-      case "personal":
-        return "personalGrowth";
-      case "team":
-        return "teamInsights";
-      case "lessons":
-        return "lessonsLearned";
-      case "goals":
-        return "futureGoals";
-      default:
-        return "personalGrowth";
+  const canAddManagerResponse = (): boolean => {
+    if (!selectedTeamMember || userRole !== 'manager') {
+      return false; // Only managers can add responses when viewing team members
     }
-  };
-
-  const getColorClasses = (color: string, isActive: boolean): string => {
-    if (isActive) {
-      switch (color) {
-        case "blue":
-          return "bg-blue-600 text-white shadow-lg";
-        case "green":
-          return "bg-green-600 text-white shadow-lg";
-        case "yellow":
-          return "bg-yellow-600 text-white shadow-lg";
-        case "orange":
-          return "bg-orange-600 text-white shadow-lg";
-        default:
-          return "bg-blue-600 text-white shadow-lg";
-      }
-    }
-    return "text-slate-600 hover:bg-slate-100";
+    const categoryData = getCurrentCategoryData();
+    return Boolean(categoryData.userReview && !categoryData.managerResponse); // Can add if user review exists but no manager response
   };
 
   const renderStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star
-        key={i}
-        size={16}
-        className={
-          i < rating ? "text-yellow-400 fill-current" : "text-gray-300"
-        }
-      />
-    ));
-  };
-
-  // Calculate summary statistics for current data being viewed
-  const getCurrentData = () => {
-    return (userRole === 'manager' || userRole === 'admin') && selectedTeamMember 
-      ? teamReflections[selectedTeamMember] 
-      : reflectionData;
-  };
-
-  const currentData = getCurrentData();
-  
-  const summaryStats = {
-    totalReflections: Object.values(currentData || {}).reduce(
-      (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
-      0
-    ),
-    selfReviews: Object.values(currentData || {}).reduce(
-      (sum, arr) =>
-        sum +
-        (Array.isArray(arr)
-          ? arr.filter((item) => item.reviewType === "self").length
-          : 0),
-      0
-    ),
-    managerReviews: Object.values(currentData || {}).reduce(
-      (sum, arr) =>
-        sum +
-        (Array.isArray(arr)
-          ? arr.filter((item) => item.reviewType === "manager").length
-          : 0),
-      0
-    ),
-    avgRating: (() => {
-      const allItems: EnhancedReflectionItem[] = [
-        ...(currentData?.personalGrowth || []),
-        ...(currentData?.teamInsights || []),
-        ...(currentData?.lessonsLearned || []),
-        ...(currentData?.futureGoals || []),
-      ];
-      // Filter items based on view mode
-      const filteredItems = viewMode === 'self' 
-        ? allItems.filter((item) => item.reviewType === "self")
-        : allItems.filter((item) => item.reviewType === "manager");
-      const ratedItems = filteredItems.filter((item) => item.rating);
-      return ratedItems.length > 0
-        ? (
-            ratedItems.reduce((sum, item) => sum + (item.rating || 0), 0) /
-            ratedItems.length
-          ).toFixed(1)
-        : "0";
-    })(),
-  };
-
-  if (!sprint) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <BookOpen size={48} className="mx-auto mb-4 text-slate-400" />
-          <h2 className="text-xl font-bold text-slate-800 mb-2">
-            Sprint Not Found
-          </h2>
-          <p className="text-slate-600">
-            Sprint {sprintNo} doesn't exist for this board.
-          </p>
-        </div>
+      <div className="flex items-center gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            size={16}
+            className={star <= rating ? "text-yellow-400 fill-current" : "text-gray-300"}
+          />
+        ))}
       </div>
     );
-  }
+  };
 
-  return (
-    <div className="space-y-6 p-4 tablet:p-6">
-      {/* Header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
-        <div className="flex flex-col tablet:flex-row tablet:items-center gap-3 mb-4">
-          <BookOpen size={24} className="text-blue-600" />
-          <div className="flex-1">
-            <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">
-              {sprint.name} - Reflection
-              {(userRole === 'manager' || userRole === 'admin') && selectedTeamMember && (
-                <span className="text-lg font-normal text-slate-600 ml-2">
-                  - {board.collaborators.find(c => c.email === selectedTeamMember)?.name}
-                </span>
-              )}
-            </h2>
-            <p className="text-sm tablet:text-base text-slate-600">
-              {selectedTeamMember 
-                ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s reflections`
-                : "Comprehensive self and manager review covering personal growth, team insights, and future planning"
-              }
-            </p>
-          </div>
-        </div>
+  const renderCategoryContent = () => {
+    const categoryData = getCurrentCategoryData();
+    const categoryName = 
+      activeTab === "personal" ? "Personal Growth" :
+      activeTab === "team" ? "Team Insights" :
+      activeTab === "lessons" ? "Lessons Learned" :
+      "Future Goals";
 
-        {/* Team Member Selector for Managers */}
-        {(userRole === 'manager' || userRole === 'admin') && (
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-3 mb-3">
-              <Crown className="w-5 h-5 text-purple-600" />
-              <h3 className="text-sm font-semibold text-purple-800">
-                Manager View
-              </h3>
-            </div>
-            <div className="flex flex-col tablet:flex-row tablet:items-center gap-3 tablet:gap-4 mb-3">
-              <label className="text-sm font-medium text-purple-700">
-                View reflections for:
-              </label>
-              <select
-                value={selectedTeamMember}
-                onChange={(e) => setSelectedTeamMember(e.target.value)}
-                className="px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm bg-white w-full tablet:w-auto"
-              >
-                <option value="">My Reflections</option>
-                {board.collaborators
-                  .filter(collab => collab.email !== user?.email)
-                  .map(collab => (
-                    <option key={collab.email} value={collab.email}>
-                      {collab.name} ({collab.email})
-                    </option>
-                  ))}
-              </select>
-            </div>
-            {!selectedTeamMember && (
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-purple-700">
-                  View Mode:
-                </label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setViewMode('self')}
-                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                      viewMode === 'self'
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-white text-purple-600 border border-purple-300 hover:bg-purple-50'
-                    }`}
-                  >
-                    Self Reviews
-                  </button>
-                  <button
-                    onClick={() => setViewMode('manager')}
-                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                      viewMode === 'manager'
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-white text-purple-600 border border-purple-300 hover:bg-purple-50'
-                    }`}
-                  >
-                    Manager Reviews
-                  </button>
-                </div>
+    return (
+      <div className="space-y-6">
+        {/* User Review Section */}
+        {categoryData.userReview && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <User size={16} className="text-blue-600" />
               </div>
-            )}
-            <p className="text-xs text-purple-600 mt-2">
-              {selectedTeamMember 
-                ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s self-reviews - comment to provide feedback`
-                : "Viewing your manager reviews"
-              }
-            </p>
+              <div>
+                <h3 className="font-semibold text-blue-800">User Review</h3>
+                <p className="text-sm text-blue-600">
+                  by {categoryData.userReview.author} • {new Date(categoryData.userReview.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+            <div className="text-slate-700 whitespace-pre-wrap">
+              {categoryData.userReview.content}
+            </div>
           </div>
         )}
 
-        {/* Privacy Notice */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0">
-              <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-blue-800 mb-1">
-                Private Reflection
-              </h3>
-              <p className="text-sm text-blue-700">
-                {userRole === 'manager'
-                  ? "As a manager, you can view team member self-reviews and provide feedback by commenting on them. You can also add manager reviews for team members. You do not create self-reviews."
-                  : userRole === 'admin'
-                  ? "As an admin, you can view team member reflections and manager feedback, but only managers can add manager reviews."
-                  : "Your reflections are private and only visible to you and your manager. You can see manager reviews given to you, but only managers can add them."
-                }
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {summaryStats.totalReflections}
-            </div>
-            <div className="text-sm text-blue-700">Total Reflections</div>
-          </div>
-          <div className="bg-green-50 rounded-lg border border-green-200 p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">
-              {summaryStats.selfReviews}
-            </div>
-            <div className="text-sm text-green-700">Self Reviews</div>
-          </div>
-          <div className="bg-purple-50 rounded-lg border border-purple-200 p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600">
-              {summaryStats.managerReviews}
-            </div>
-            <div className="text-sm text-purple-700">Manager Reviews</div>
-          </div>
-          <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-4 text-center">
-            <div className="flex items-center justify-center gap-1 mb-1">
-              {renderStars(Math.round(parseFloat(summaryStats.avgRating)))}
-            </div>
-            <div className="text-sm text-yellow-700">
-              Avg Rating: {summaryStats.avgRating}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="bg-white rounded-xl border border-slate-200 p-1">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-1">
-          {tabs.map((tab) => {
-            const IconComponent = tab.icon;
-            const isActive = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all ${getColorClasses(
-                  tab.color,
-                  isActive
-                )}`}
-              >
-                <IconComponent size={18} />
-                <span className="hidden sm:inline">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Content Area */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">
-              {tabs.find((t) => t.key === activeTab)?.label}
-            </h3>
-            <p className="text-sm text-slate-600 mt-1">
-              {tabs.find((t) => t.key === activeTab)?.description}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              disabled={
-                (!!selectedTeamMember && (userRole !== 'manager' && userRole !== 'admin')) ||
-                (viewMode === 'manager' && userRole !== 'manager') ||
-                (userRole === 'manager' && viewMode === 'self' && !selectedTeamMember)
-              }
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-            >
-              {showAddForm ? <X size={16} /> : <Plus size={16} />}
-              {showAddForm ? "Cancel" : selectedTeamMember ? "Add Manager Review" : (userRole === 'manager' ? "Add Manager Review" : (viewMode === 'self' ? "Add Self Review" : "Add Manager Review"))}
-            </button>
-          </div>
-        </div>
-
-        {/* Add Reflection Form */}
-        {showAddForm && (
-          <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 mb-6">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Review Type
-                  </label>
-                  <select
-                    value={selectedTeamMember ? "manager" : (userRole === 'manager' ? "manager" : (viewMode === 'manager' ? "manager" : newReflection.reviewType))}
-                    onChange={(e) =>
-                      setNewReflection({
-                        ...newReflection,
-                        reviewType: e.target.value as "self" | "manager",
-                      })
-                    }
-                    disabled={!!selectedTeamMember || (userRole !== 'manager' && viewMode === 'manager') || (userRole === 'manager' && !selectedTeamMember && viewMode === 'self')}
-                    className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-slate-100"
-                  >
-                    {userRole !== 'manager' && (
-                      <option value="self">Self Review</option>
-                    )}
-                    {userRole === 'manager' && (
-                      <option value="manager">Manager Review</option>
-                    )}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    value={newReflection.priority}
-                    onChange={(e) =>
-                      setNewReflection({
-                        ...newReflection,
-                        priority: e.target.value as "Low" | "Medium" | "High",
-                      })
-                    }
-                    className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="Low">Low Priority</option>
-                    <option value="Medium">Medium Priority</option>
-                    <option value="High">High Priority</option>
-                  </select>
-                </div>
+        {/* Manager Response Section */}
+        {categoryData.managerResponse && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Crown size={16} className="text-purple-600" />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Rating (1-5 stars)
-                </label>
+              <div className="flex-1">
+                <h3 className="font-semibold text-purple-800">Manager Response</h3>
+                <p className="text-sm text-purple-600">
+                  by {categoryData.managerResponse.author} • {new Date(categoryData.managerResponse.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+              {categoryData.managerResponse.rating && (
                 <div className="flex items-center gap-2">
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <button
-                      key={i}
-                      onClick={() =>
-                        setNewReflection({ ...newReflection, rating: i + 1 })
-                      }
-                      className="focus:outline-none"
-                    >
-                      <Star
-                        size={24}
-                        className={
-                          i < newReflection.rating
-                            ? "text-yellow-400 fill-current"
-                            : "text-gray-300 hover:text-yellow-300"
-                        }
-                      />
-                    </button>
-                  ))}
-                  <span className="ml-2 text-sm text-slate-600">
-                    {newReflection.rating}/5
-                  </span>
+                  <span className="text-sm text-purple-600">Rating:</span>
+                  {renderStars(categoryData.managerResponse.rating)}
                 </div>
-              </div>
+              )}
+            </div>
+            <div className="text-slate-700 whitespace-pre-wrap">
+              {categoryData.managerResponse.content}
+            </div>
+          </div>
+        )}
 
+        {/* Add Form Section */}
+        {showAddForm && (
+          <div className="bg-white border border-slate-200 rounded-lg p-6">
+            <h3 className="font-semibold text-slate-800 mb-4">
+              {canAddManagerResponse() ? `Add Manager Response for ${categoryName}` : `Add ${categoryName} Review`}
+            </h3>
+            
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Reflection Content
+                  {canAddManagerResponse() ? "Manager Response" : "Your Review"}
                 </label>
-                <EnhancedSmartReflectionInput
+                <textarea
                   value={newReflection.content}
-                  onChange={(value) =>
-                    setNewReflection({ ...newReflection, content: value })
-                  }
-                  onSubmit={() => {}}
-                  placeholder={`Share your thoughts about ${tabs
-                    .find((t) => t.key === activeTab)
-                    ?.label.toLowerCase()}... Use @username to mention team members and #task to reference tasks.`}
-                  tasks={mentionTasks}
-                  users={mentionUsers}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                  onChange={(e) => setNewReflection({ ...newReflection, content: e.target.value })}
+                  placeholder={canAddManagerResponse() ? "Provide feedback and rating..." : "Share your thoughts..."}
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                   rows={4}
-                  isTextarea={true}
                 />
               </div>
+
+              {canAddManagerResponse() && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Rating (1-5 stars)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setNewReflection({ ...newReflection, rating: star })}
+                        className="p-1"
+                      >
+                        <Star
+                          size={24}
+                          className={star <= (newReflection.rating || 0) ? "text-yellow-400 fill-current" : "text-gray-300"}
+                        />
+                      </button>
+                    ))}
+                    <span className="text-sm text-slate-600 ml-2">
+                      {newReflection.rating ? `${newReflection.rating}/5` : "Select rating"}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button
                   onClick={handleAddReflection}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  {userRole === 'manager' ? "Add Manager Review" : (viewMode === 'self' ? "Add Self Review" : "Add Manager Review")}
+                  {canAddManagerResponse() ? "Add Manager Response" : "Add Review"}
                 </button>
                 <button
                   onClick={() => setShowAddForm(false)}
@@ -1337,386 +525,263 @@ const EnhancedReflectionTab: React.FC<EnhancedReflectionTabProps> = ({
           </div>
         )}
 
-        {/* Reflections List */}
-        <div className="space-y-4">
-          {getCurrentCategoryData().length > 0 ? (
-            getCurrentCategoryData().map((reflection) => (
-              <div
-                key={reflection.id}
-                className="border border-slate-200 rounded-lg p-6"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`p-2 rounded-lg ${
-                        reflection.reviewType === "self"
-                          ? "bg-blue-100"
-                          : "bg-purple-100"
-                      }`}
-                    >
-                      {reflection.reviewType === "self" ? (
-                        <User size={16} className="text-blue-600" />
-                      ) : (
-                        <Crown size={16} className="text-purple-600" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            reflection.reviewType === "self"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-purple-100 text-purple-700"
-                          }`}
-                        >
-                          {reflection.reviewType === "self"
-                            ? "Self Review"
-                            : "Manager Review"}
-                        </span>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            reflection.priority === "High"
-                              ? "bg-red-100 text-red-700"
-                              : reflection.priority === "Medium"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-green-100 text-green-700"
-                          }`}
-                        >
-                          {reflection.priority} Priority
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        by {reflection.author} •{" "}
-                        {new Date(reflection.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {reflection.rating && (
-                      <div className="flex items-center gap-1">
-                        {renderStars(reflection.rating)}
-                      </div>
-                    )}
-                    {reflection.authorEmail === user?.email && (
-                      <>
-                        <button
-                          onClick={() => handleEditReflection(reflection)}
-                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1 rounded transition-colors"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleDeleteReflection(
-                              getCurrentCategoryKey(),
-                              reflection.id
-                            )
-                          }
-                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
+        {/* Add Button */}
+        {!showAddForm && (canAddUserReview() || canAddManagerResponse()) && (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="w-full p-4 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
+          >
+            <Plus size={20} />
+            {canAddManagerResponse() ? "Add Manager Response" : `Add ${categoryName} Review`}
+          </button>
+        )}
 
-                {editingReflection === reflection.id ? (
-                  <div className="bg-slate-50 rounded-lg p-4 mb-4">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                          Content
-                        </label>
-                        <textarea
-                          value={editForm.content}
-                          onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
-                          className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
-                          rows={4}
-                          placeholder="Enter your reflection..."
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Priority
-                          </label>
-                          <select
-                            value={editForm.priority}
-                            onChange={(e) =>
-                              setEditForm({
-                                ...editForm,
-                                priority: e.target.value as "Low" | "Medium" | "High",
-                              })
-                            }
-                            className="w-full p-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                          >
-                            <option value="Low">Low Priority</option>
-                            <option value="Medium">Medium Priority</option>
-                            <option value="High">High Priority</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Rating (1-5 stars)
-                          </label>
-                          <div className="flex items-center gap-2">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                onClick={() => setEditForm({ ...editForm, rating: star })}
-                                className={`text-2xl transition-colors ${
-                                  star <= editForm.rating
-                                    ? "text-yellow-400"
-                                    : "text-slate-300 hover:text-yellow-300"
-                                }`}
-                              >
-                                <Star size={20} fill="currentColor" />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={handleSaveEdit}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Save Changes
-                        </button>
-                        <button
-                          onClick={handleCancelEdit}
-                          className="px-4 py-2 bg-slate-300 text-slate-700 rounded-lg hover:bg-slate-400 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-slate-700 leading-relaxed mb-4">
-                    {renderContentWithMentions(reflection.content)}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() =>
-                        handleLikeReflection(
-                          getCurrentCategoryKey(),
-                          reflection.id
-                        )
-                      }
-                      disabled={reflection.authorEmail === user?.email}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
-                        reflection.authorEmail === user?.email
-                          ? "text-slate-400 cursor-not-allowed"
-                          : reflection.likes.includes(user?.email || "")
-                          ? "text-red-600 bg-red-100"
-                          : "text-slate-500 hover:text-red-600 hover:bg-red-100"
-                      }`}
-                    >
-                      <Heart size={14} />
-                      <span className="text-sm font-medium">
-                        {reflection.likes.length}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() =>
-                        setShowComments({
-                          ...showComments,
-                          [reflection.id]: !showComments[reflection.id],
-                        })
-                      }
-                      className="flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                    >
-                      <MessageCircle size={14} />
-                      <span className="text-sm font-medium">
-                        {reflection.comments.length}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Comments Section */}
-                {showComments[reflection.id] && (
-                  <div className="border-t border-slate-200 pt-4 mt-4">
-                    {/* Existing Comments */}
-                    {reflection.comments.length > 0 && (
-                      <div className="space-y-3 mb-4">
-                        {reflection.comments.map((comment) => (
-                          <div
-                            key={comment.id}
-                            className="bg-slate-50 rounded-lg p-3"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="text-sm text-slate-700 mb-1">
-                                  {renderContentWithMentions(comment.text)}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-500">
-                                  <span>{comment.author}</span>
-                                  <span>•</span>
-                                  <span>
-                                    {new Date(
-                                      comment.createdAt
-                                    ).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              </div>
-                              <button
-                                onClick={() =>
-                                  handleLikeComment(
-                                    getCurrentCategoryKey(),
-                                    reflection.id,
-                                    comment.id
-                                  )
-                                }
-                                disabled={comment.authorEmail === user?.email}
-                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                                  comment.authorEmail === user?.email
-                                    ? "text-slate-400 cursor-not-allowed"
-                                    : comment.likes.includes(user?.email || "")
-                                    ? "text-red-600 bg-red-100"
-                                    : "text-slate-500 hover:text-red-600 hover:bg-red-100"
-                                }`}
-                              >
-                                <Heart size={12} /> {comment.likes.length}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Add Comment */}
-                    <div className="space-y-2">
-                      {reflection.reviewType === 'manager' && viewMode === 'manager' && (
-                        <div className="flex items-center gap-2 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">
-                          <Crown size={12} />
-                          <span>Replying to manager review</span>
-                        </div>
-                      )}
-                      {reflection.reviewType === 'self' && userRole === 'manager' && (
-                        <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                          <User size={12} />
-                          <span>Providing feedback on self-review</span>
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                      <SmartCommentInput
-                        value={commentTexts[reflection.id] || ""}
-                        onChange={(value) =>
-                          setCommentTexts({
-                            ...commentTexts,
-                            [reflection.id]: value,
-                          })
-                        }
-                        onSubmit={() =>
-                          handleAddComment(
-                            getCurrentCategoryKey(),
-                            reflection.id
-                          )
-                        }
-                        placeholder={
-                          reflection.reviewType === 'manager' 
-                            ? "Reply to manager review... Use @username to mention users or #task for tasks"
-                            : userRole === 'manager' && reflection.reviewType === 'self'
-                            ? "Provide feedback on this self-review... Use @username to mention users or #task for tasks"
-                            : "Add a comment... Use @username to mention users or #task for tasks"
-                        }
-                        users={mentionUsers}
-                        tasks={tasks}
-                      />
-                      <button
-                        onClick={() =>
-                          handleAddComment(
-                            getCurrentCategoryKey(),
-                            reflection.id
-                          )
-                        }
-                        disabled={!commentTexts[reflection.id]?.trim()}
-                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <Send size={14} />
-                      </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-12 text-slate-500">
-              <div className="flex justify-center mb-4">
-                {tabs.find((t) => t.key === activeTab)?.icon &&
-                  React.createElement(
-                    tabs.find((t) => t.key === activeTab)!.icon,
-                    {
-                      size: 48,
-                      className: "text-slate-300",
-                    }
-                  )}
-              </div>
-              <h4 className="text-lg font-medium mb-2">No reflections yet</h4>
-              <p className="text-sm text-slate-400 mb-4">
-                Start documenting your thoughts and insights about{" "}
-                {tabs.find((t) => t.key === activeTab)?.label.toLowerCase()}
-              </p>
+        {/* Empty State */}
+        {!categoryData.userReview && !categoryData.managerResponse && !showAddForm && (
+          <div className="text-center py-12 text-slate-500">
+            <BookOpen size={48} className="mx-auto mb-4 text-slate-300" />
+            <h3 className="text-lg font-medium mb-2">No {categoryName.toLowerCase()} yet</h3>
+            <p className="text-sm mb-4">
+              {selectedTeamMember 
+                ? `This team member hasn't added a ${categoryName.toLowerCase()} review yet.`
+                : `Start your ${categoryName.toLowerCase()} reflection for this sprint.`
+              }
+            </p>
+            {canAddUserReview() && (
               <button
                 onClick={() => setShowAddForm(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Add Your First Reflection
+                Add {categoryName} Review
               </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const tabs = [
+    { key: "personal" as TabKey, label: "Personal Growth", icon: User },
+    { key: "team" as TabKey, label: "Team Insights", icon: Users },
+    { key: "lessons" as TabKey, label: "Lessons Learned", icon: Lightbulb },
+    { key: "goals" as TabKey, label: "Future Goals", icon: Target },
+  ];
+
+  return (
+    <div className="space-y-6 p-4 tablet:p-6">
+      {/* Header */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
+        <div className="flex flex-col tablet:flex-row tablet:items-center gap-3 mb-4">
+          <BookOpen size={24} className="text-blue-600" />
+          <div className="flex-1">
+            <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">
+              {sprint?.name} - Reflection
+              {(userRole === 'manager' || userRole === 'admin') && selectedTeamMember && (
+                <span className="text-lg font-normal text-slate-600 ml-2">
+                  - {board.collaborators.find(c => c.email === selectedTeamMember)?.name}
+                </span>
+              )}
+            </h2>
+            <p className="text-sm tablet:text-base text-slate-600">
+              {selectedTeamMember 
+                ? `Viewing ${board.collaborators.find(c => c.email === selectedTeamMember)?.name}'s reflections`
+                : "Share your thoughts and receive manager feedback"
+              }
+            </p>
+          </div>
+        </div>
+
+        {/* Team Member Selector for Managers Only */}
+        {userRole === 'manager' && (
+          <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Select Team Member
+            </label>
+            <div className="flex items-center gap-3">
+              <select
+                value={selectedTeamMember}
+                onChange={(e) => setSelectedTeamMember(e.target.value)}
+                className="flex-1 p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">View My Own Reflections</option>
+                {board.collaborators
+                  .filter(collab => collab.email !== user?.email)
+                  .map((collab) => (
+                    <option key={collab.email} value={collab.email}>
+                      {collab.name} ({collab.email})
+                    </option>
+                  ))}
+              </select>
+              <div className="text-xs text-slate-500">
+                {board.collaborators.filter(collab => collab.email !== user?.email).length} team members
+              </div>
             </div>
-          )}
+            {/* Debug info */}
+            <div className="mt-2 text-xs text-slate-400">
+              Debug: userRole={userRole}, collaborators={board.collaborators.length}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Reflection Metrics */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
+        <div className="grid grid-cols-2 tablet:grid-cols-4 gap-4">
+          {/* Total Reflections */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+            <div className="text-2xl tablet:text-3xl font-bold text-blue-600 mb-1">
+              {(() => {
+                const total = Object.values(reflectionData).filter(cat => 
+                  cat.userReview || cat.managerResponse
+                ).length;
+                return total;
+              })()}
+            </div>
+            <div className="text-sm font-medium text-blue-700">Total Reflections</div>
+          </div>
+
+          {/* Self Reviews */}
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+            <div className="text-2xl tablet:text-3xl font-bold text-green-600 mb-1">
+              {(() => {
+                const selfReviews = Object.values(reflectionData).filter(cat => 
+                  cat.userReview
+                ).length;
+                return selfReviews;
+              })()}
+            </div>
+            <div className="text-sm font-medium text-green-700">Self Reviews</div>
+          </div>
+
+          {/* Manager Reviews */}
+          <div className="bg-white border border-slate-200 rounded-lg p-4 text-center">
+            <div className="text-2xl tablet:text-3xl font-bold text-slate-800 mb-1">
+              {(() => {
+                const managerReviews = Object.values(reflectionData).filter(cat => 
+                  cat.managerResponse
+                ).length;
+                return managerReviews;
+              })()}
+            </div>
+            <div className="text-sm font-medium text-slate-700">Manager Reviews</div>
+          </div>
+
+          {/* Average Rating */}
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+            <div className="flex justify-center mb-1">
+              {[1, 2, 3, 4, 5].map((star) => {
+                const avgRating = (() => {
+                  const ratings = Object.values(reflectionData)
+                    .map(cat => cat.managerResponse?.rating)
+                    .filter(rating => rating !== undefined) as number[];
+                  return ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0;
+                })();
+                
+                return (
+                  <svg
+                    key={star}
+                    className={`w-4 h-4 ${star <= Math.round(avgRating) ? 'text-yellow-400 fill-current' : 'text-yellow-300'}`}
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                );
+              })}
+            </div>
+            <div className="text-sm font-medium text-yellow-700">
+              Avg Rating: {(() => {
+                const ratings = Object.values(reflectionData)
+                  .map(cat => cat.managerResponse?.rating)
+                  .filter(rating => rating !== undefined) as number[];
+                return ratings.length > 0 ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1) : '0';
+              })()}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Quick Add Templates */}
-      <div className="bg-gradient-to-r from-slate-50 to-blue-50 rounded-xl border border-slate-200 p-6">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">
-          Quick Reflection Templates
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <h4 className="font-medium text-slate-700">Self Review Prompts:</h4>
-            <ul className="text-sm text-slate-600 space-y-1">
-              <li>• What skill did I develop or improve this sprint?</li>
-              <li>• What challenge helped me grow the most?</li>
-              <li>• How did I contribute to team success?</li>
-              <li>• What would I do differently next time?</li>
+      {/* Quick Reflection Templates */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
+        <h3 className="text-lg font-bold text-slate-800 mb-4">Quick Reflection Templates</h3>
+        <div className="grid grid-cols-1 tablet:grid-cols-2 gap-6">
+          {/* Self Review Prompts */}
+          <div className="bg-blue-50 rounded-lg p-4">
+            <h4 className="font-semibold text-slate-800 mb-3">Self Review Prompts:</h4>
+            <ul className="space-y-2 text-sm text-slate-700">
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 mt-1">•</span>
+                <span>What skill did I develop or improve this sprint?</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 mt-1">•</span>
+                <span>What challenge helped me grow the most?</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 mt-1">•</span>
+                <span>How did I contribute to team success?</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-600 mt-1">•</span>
+                <span>What would I do differently next time?</span>
+              </li>
             </ul>
           </div>
-          <div className="space-y-2">
-            <h4 className="font-medium text-slate-700">
-              Manager Review Prompts:
-            </h4>
-            <ul className="text-sm text-slate-600 space-y-1">
-              <li>• How did the team member exceed expectations?</li>
-              <li>• What development areas should they focus on?</li>
-              <li>• How did they impact team dynamics?</li>
-              <li>• What support do they need for growth?</li>
+
+          {/* Manager Review Prompts */}
+          <div className="bg-green-50 rounded-lg p-4">
+            <h4 className="font-semibold text-slate-800 mb-3">Manager Review Prompts:</h4>
+            <ul className="space-y-2 text-sm text-slate-700">
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 mt-1">•</span>
+                <span>How did the team member exceed expectations?</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 mt-1">•</span>
+                <span>What development areas should they focus on?</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 mt-1">•</span>
+                <span>How did they impact team dynamics?</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-600 mt-1">•</span>
+                <span>What support do they need for growth?</span>
+              </li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* Task Modal */}
-      {selectedTask && showTaskModal && (
-        <TaskModal
-          task={selectedTask}
-          onClose={() => {
-            setSelectedTask(null);
-            setShowTaskModal(false);
-          }}
-          existingTasks={tasks}
-        />
-      )}
+      {/* Tabs */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
+        <div className="flex flex-wrap gap-2 mb-6">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  isActive
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab Content */}
+        {renderCategoryContent()}
+      </div>
     </div>
   );
 };
 
-export default EnhancedReflectionTab;
+export default Reflection;

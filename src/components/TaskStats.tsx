@@ -10,8 +10,9 @@ interface TaskStatsProps {
 const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
   const { user } = useAppSelector(state => state.auth);
 
+  // Set today to start of day for consistent date comparison
   const today = new Date();
-  today.setHours(23, 59, 59, 999);
+  today.setHours(0, 0, 0, 0);
 
   // Filter out child tasks (subtasks) - only count main/parent tasks
   const mainTasks = tasks.filter(task => !task.parentTaskId);
@@ -21,13 +22,14 @@ const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
     t.priority === 'High' && t.status !== 'done' && t.status !== 'completed' && t.assignedTo?.email === user?.email
   ).length;
 
-  const overdueTasks = mainTasks.filter(t =>
-    t.dueDate &&
-    new Date(t.dueDate) < today &&
-    t.status !== 'done' &&
-    t.status !== 'completed' &&
-   t.assignedTo?.email === user?.email
-  ).length;
+  const overdueTasks = mainTasks.filter(t => {
+    if (!t.dueDate || t.status === 'done' || t.status === 'completed' || t.assignedTo?.email !== user?.email) {
+      return false;
+    }
+    const taskDate = new Date(t.dueDate);
+    taskDate.setHours(0, 0, 0, 0); // Set to start of day for consistent comparison
+    return taskDate < today;
+  }).length;
 
   const upcomingTasks = mainTasks.filter(t => {
     if (!t.dueDate || t.status === 'done' || t.status === 'completed' || t.assignedTo?.email !== user?.email) return false;

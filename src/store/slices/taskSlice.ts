@@ -95,7 +95,9 @@ export const tasksSlice = createSlice({
         state.error = action.error.message || 'Failed to fetch tasks';
       })
       .addCase(createTask.fulfilled, (state, action) => {
-        state.tasks.push(action.payload);
+        // Don't add to Redux state here since useTasksSync will handle it via real-time listener
+        // This prevents duplicates when both createTask action and real-time listener try to add the same task
+        // The real-time listener will pick up the new task from Firebase and update the state
       })
       .addCase(updateTask.fulfilled, (state, action) => {
         const { taskId, updates } = action.payload;

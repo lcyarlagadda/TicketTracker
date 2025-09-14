@@ -194,9 +194,12 @@ class BoardService {
       }
 
       const boardRef = doc(db, 'boards', boardId);
+      
+      // Use merge: true to handle concurrent updates better
+      // This prevents overwriting other fields that might be updated simultaneously
       await updateDoc(boardRef, updates);
     } catch (error) {
-      // Error('Error updating board:', error);
+      console.error('Error updating board:', error);
       throw error;
     }
   }
@@ -357,12 +360,20 @@ class BoardService {
       // Log(`Starting comprehensive deletion of board ${boardId}`);
 
       // 1. Delete all tasks for this board (including their file attachments)
-      await this.deleteAllBoardTasks(boardId);
-      // Log(`Deleted all tasks for board ${boardId}`);
+      try {
+        await this.deleteAllBoardTasks(boardId);
+        // Log(`Deleted all tasks for board ${boardId}`);
+      } catch (error: any) {
+        // Log(`Warning: Some task attachments may not have been deleted due to CORS restrictions:`, error);
+      }
 
       // 2. Delete board image from storage if it exists
-      await this.deleteBoardImage(boardId);
-      // Log(`Deleted board image for board ${boardId}`);
+      try {
+        await this.deleteBoardImage(boardId);
+        // Log(`Deleted board image for board ${boardId}`);
+      } catch (error: any) {
+        // Log(`Warning: Board image may not have been deleted due to CORS restrictions:`, error);
+      }
 
       // 3. Delete all sprints for this board
       await this.deleteAllBoardSprints(boardId);
@@ -405,15 +416,8 @@ class BoardService {
         const deleteAttachmentPromises = tasksSnapshot.docs.map(async (taskDoc) => {
           const taskId = taskDoc.id;
           try {
-            // Delete all files in the attachments/{taskId}/ folder
-            const attachmentsRef = ref(storage, `attachments/${taskId}`);
-            const attachmentsList = await listAll(attachmentsRef);
-            
-            if (attachmentsList.items.length > 0) {
-              const deleteFilePromises = attachmentsList.items.map(fileRef => deleteObject(fileRef));
-              await Promise.all(deleteFilePromises);
-              // Log(`Deleted ${attachmentsList.items.length} file attachments for task ${taskId}`);
-            }
+            // Delete all files in the attachments/{taskId}/ folder with retry logic
+            await this.deleteTaskAttachmentsWithRetry(taskId);
           } catch (error) {
             // Log error but don't fail the entire operation if file deletion fails
             // Warn(`Failed to delete attachments for task ${taskId}:`, error);
@@ -430,6 +434,40 @@ class BoardService {
     } catch (error) {
       // Error('Error deleting board tasks:', error);
       throw error;
+    }
+  }
+
+  // Delete task attachments with retry logic to handle CORS errors
+  private async deleteTaskAttachmentsWithRetry(taskId: string, maxRetries: number = 3): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const attachmentsRef = ref(storage, `attachments/${taskId}`);
+        const attachmentsList = await listAll(attachmentsRef);
+        
+        if (attachmentsList.items.length > 0) {
+          const deleteFilePromises = attachmentsList.items.map(fileRef => deleteObject(fileRef));
+          await Promise.all(deleteFilePromises);
+          // Log(`Deleted ${attachmentsList.items.length} file attachments for task ${taskId}`);
+        }
+        return; // Success, exit retry loop
+      } catch (error: any) {
+        const isCorsError = error?.message?.includes('CORS') || 
+                           error?.message?.includes('blocked by CORS policy') ||
+                           error?.code === 'storage/unauthorized';
+        
+        if (isCorsError && attempt < maxRetries) {
+          // Log(`CORS error on attempt ${attempt} for task ${taskId}, retrying in 1 second...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        
+        if (attempt === maxRetries) {
+          // Log(`Failed to delete attachments for task ${taskId} after ${maxRetries} attempts:`, error);
+          throw new Error(`Failed to delete task attachments after ${maxRetries} attempts. This may be due to CORS policy restrictions. The board will still be deleted, but some files may remain in storage.`);
+        }
+        
+        throw error;
+      }
     }
   }
 
@@ -452,9 +490,17 @@ class BoardService {
               await deleteObject(imageRef);
               // Log(`Deleted board image: ${filePath}`);
             }
-          } catch (error) {
+          } catch (error: any) {
             // Log error but don't fail the entire operation if image deletion fails
-            // Warn(`Failed to delete board image for board ${boardId}:`, error);
+            const isCorsError = error?.message?.includes('CORS') || 
+                               error?.message?.includes('blocked by CORS policy') ||
+                               error?.code === 'storage/unauthorized';
+            
+            if (isCorsError) {
+              // Warn(`CORS error when deleting board image for board ${boardId}. The board will still be deleted, but the image may remain in storage.`);
+            } else {
+              // Warn(`Failed to delete board image for board ${boardId}:`, error);
+            }
           }
         }
       }

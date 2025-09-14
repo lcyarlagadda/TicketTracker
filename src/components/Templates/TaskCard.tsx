@@ -168,7 +168,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
     }
   };
 
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done';
+  const isOverdue = (() => {
+    if (!task.dueDate || task.status === 'done' || task.status === 'completed') return false;
+    const taskDate = new Date(task.dueDate);
+    const today = new Date();
+    taskDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return taskDate < today;
+  })();
 
   return (
     <>

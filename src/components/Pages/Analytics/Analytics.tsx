@@ -77,14 +77,27 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const contributorMetrics = useMemo((): ContributorMetrics[] => {
     // Use all board collaborators instead of just task assignees
     const contributors = board.collaborators?.map(collab => collab.name) || [];
+    
+    // Fallback: if no collaborators, use task assignees
+    const taskAssignees = [...new Set(tasks.map(t => t.assignedTo?.name).filter(Boolean))] as string[];
+    const finalContributors = contributors.length > 0 ? contributors : taskAssignees;
+    
+    // Debug logging
+    console.log('Analytics Debug:', {
+      boardCollaborators: board.collaborators,
+      contributorNames: contributors,
+      taskAssignees,
+      finalContributors,
+      totalTasks: tasks.length
+    });
 
-    return contributors
+    return finalContributors
       .map((contributor) => {
         const contributorTasks = tasks.filter(
           (t) => t.assignedTo?.name === contributor
         );
         const completedTasks = contributorTasks.filter(
-          (t) => t.status === "Done" || t.status === "done"
+          (t) => t.status === "Done" || t.status === "done" || t.status === "completed"
         );
         const inProgressTasks = contributorTasks.filter(
           (t) => t.status === "In Progress" || t.status === "inprogress"
@@ -179,6 +192,12 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           velocity: isNaN(velocity) ? 0 : Math.round(velocity * 10) / 10,
         };
       })
+      .filter(contributor => {
+        const hasTasks = contributor.taskCount > 0;
+        console.log(`Contributor ${contributor.name}: ${contributor.taskCount} tasks, hasTasks: ${hasTasks}`);
+        console.log(`Contributor data:`, contributor);
+        return true; // Show all contributors for debugging
+      }) // Temporarily show all contributors for debugging
       .sort((a, b) => b.pointsCompleted - a.pointsCompleted);
   }, [tasks, timeRange, refreshKey]);
 
@@ -482,24 +501,27 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     ? "Completed Points"
                     : name === "pointsInProgress"
                     ? "In Progress Points"
-                    : name === "velocity"
-                    ? "Velocity (pts/week)"
+                    : name === "pointsTotal"
+                    ? "Total Points"
                     : name,
                 ]}
               />
               <Bar
+                dataKey="pointsTotal"
+                fill="#E5E7EB"
+                name="Total"
+                opacity={0.3}
+              />
+              <Bar
                 dataKey="pointsCompleted"
-                stackId="a"
                 fill="#10B981"
                 name="Completed"
               />
               <Bar
                 dataKey="pointsInProgress"
-                stackId="a"
                 fill="#F59E0B"
                 name="In Progress"
               />
-              <Bar dataKey="velocity" fill="#3B82F6" name="Velocity" />
             </BarChart>
           </ResponsiveContainer>
         );

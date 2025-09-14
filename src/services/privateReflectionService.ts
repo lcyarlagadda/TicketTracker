@@ -108,19 +108,45 @@ class PrivateReflectionService {
       // Check if user has access to this board
       const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
       if (!accessDoc.exists()) {
-        // If no direct access, check if user is the board creator
+        // If no direct access, check if user is the board creator or collaborator
         const boardDoc = await getDoc(doc(db, 'boards', boardId));
         if (!boardDoc.exists()) {
           throw new Error('Board not found');
         }
         const boardData = boardDoc.data();
-        if (boardData.createdBy.uid !== userId) {
-          throw new Error('Access denied to board');
+        
+        // Check if user is the board creator
+        if (boardData.createdBy.uid === userId || boardData.createdBy.email === userId) {
+          // User is the board creator
+        } else {
+          // Check if user is a collaborator (using email)
+          const isCollaborator = boardData.collaborators?.some((collab: any) => collab.email === userId);
+          if (!isCollaborator) {
+            throw new Error('Access denied to board');
+          }
         }
       }
 
       const reflectionId = `${sprintId}_${userId}`;
       const existingDoc = await getDoc(doc(db, 'privateReflections', reflectionId));
+      
+      // Clean the data to remove undefined values
+      const cleanData = (obj: any): any => {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(cleanData);
+        
+        const cleaned: any = {};
+        Object.keys(obj).forEach(key => {
+          const value = obj[key];
+          if (value !== undefined) {
+            cleaned[key] = cleanData(value);
+          }
+        });
+        return cleaned;
+      };
+
+      const existingData = existingDoc.exists() ? existingDoc.data() : {};
+      const cleanedReflectionData = cleanData(reflectionData);
       
       const privateReflectionData: PrivateReflectionData = {
         sprintId,
@@ -128,15 +154,14 @@ class PrivateReflectionService {
         userId,
         userEmail,
         userName,
-        personalGrowth: reflectionData.personalGrowth || [],
-        teamInsights: reflectionData.teamInsights || [],
-        lessonsLearned: reflectionData.lessonsLearned || [],
-        futureGoals: reflectionData.futureGoals || [],
-        managerFeedback: reflectionData.managerFeedback || [],
+        personalGrowth: cleanedReflectionData.personalGrowth || {},
+        teamInsights: cleanedReflectionData.teamInsights || {},
+        lessonsLearned: cleanedReflectionData.lessonsLearned || {},
+        futureGoals: cleanedReflectionData.futureGoals || {},
         lastUpdated: new Date().toISOString(),
         isPrivate: true,
-        ...(existingDoc.exists() ? existingDoc.data() : {}),
-        ...reflectionData
+        ...cleanData(existingData),
+        ...cleanedReflectionData
       };
 
       await setDoc(doc(db, 'privateReflections', reflectionId), privateReflectionData);
@@ -217,52 +242,6 @@ class PrivateReflectionService {
     }
   }
 
-  // Add manager feedback to a private reflection
-  async addManagerFeedback(
-    managerId: string,
-    managerEmail: string,
-    managerName: string,
-    boardId: string,
-    sprintId: string,
-    targetUserId: string,
-    feedback: EnhancedReflectionItem
-  ): Promise<void> {
-    try {
-      // Check if manager has access to this board
-      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${managerId}`));
-      if (!accessDoc.exists()) {
-        throw new Error('Access denied to board');
-      }
-
-      const userAccess = accessDoc.data();
-      const isManagerOrAdmin = userAccess?.role === 'admin' || userAccess?.role === 'manager';
-
-      if (!isManagerOrAdmin) {
-        throw new Error('Only managers and admins can provide feedback');
-      }
-
-      const reflectionId = `${sprintId}_${targetUserId}`;
-      const reflectionDoc = await getDoc(doc(db, 'privateReflections', reflectionId));
-      
-      if (!reflectionDoc.exists()) {
-        throw new Error('Reflection not found');
-      }
-
-      const reflectionData = reflectionDoc.data() as PrivateReflectionData;
-      const updatedFeedback = [...(reflectionData.managerFeedback || []), feedback];
-
-      await updateDoc(doc(db, 'privateReflections', reflectionId), {
-        managerFeedback: updatedFeedback,
-        managerId,
-        managerEmail,
-        managerName,
-        lastUpdated: new Date().toISOString()
-      });
-    } catch (error) {
-      // Error adding manager feedback
-      throw error;
-    }
-  }
 
   // Listen to private reflection changes in real-time
   subscribeToPrivateReflection(

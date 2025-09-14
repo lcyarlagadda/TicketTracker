@@ -1,5 +1,5 @@
 // components/Analytics/EnhancedRetrospective.tsx
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Plus, X, Trash2, Users, Calendar, CheckCircle, AlertCircle, Target, ThumbsUp, ThumbsDown, Settings, MessageCircle, Send, AtSign, Hash } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../../hooks/redux';
 import { notificationService } from '../../../services/notificationService';
@@ -636,8 +636,8 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
     };
   }, [tasks, board.collaborators, sprint]);
 
-  // Auto-save retro data
-  const saveRetroData = async (): Promise<void> => {
+  // Auto-save retro data with retry logic and better error handling
+  const saveRetroData = useCallback(async (retryCount: number = 0): Promise<void> => {
     if (!user || !board.id || !sprint) return;
     
     setSaveStatus('saving');
@@ -677,18 +677,71 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
       
       setSaveStatus('saved');
     } catch (error) {
-      // Error('Error saving retro data:', error);
+      console.error('Error saving retro data:', error);
       setSaveStatus('error');
+      
+      // Retry logic for transient errors
+      if (retryCount < 2) {
+        setTimeout(() => {
+          saveRetroData(retryCount + 1);
+        }, 1000 * (retryCount + 1)); // Exponential backoff
+      }
+    }
+  }, [user, board.id, sprint, retroItems, dispatch]);
+
+  // Use refs to track save state and prevent unnecessary saves
+  const saveInProgressRef = useRef(false);
+  const lastSavedItemsRef = useRef<string>('');
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    // Only save if there are items and they've actually changed
+    if (retroItems.length > 0 && sprint && !saveInProgressRef.current) {
+      const currentItemsString = JSON.stringify(retroItems);
+      
+      // Check if items have actually changed since last save
+      if (currentItemsString !== lastSavedItemsRef.current) {
+        // Clear any existing timeout
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        
+        // Set new timeout for debounced save
+        saveTimeoutRef.current = setTimeout(() => {
+          saveInProgressRef.current = true;
+          saveRetroData().finally(() => {
+            saveInProgressRef.current = false;
+            lastSavedItemsRef.current = currentItemsString;
+          });
+        }, 2000); // Increased debounce time to 2 seconds
+      }
+    }
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [retroItems, sprint, saveRetroData]);
+
+  // Manual save function for immediate saving
+  const handleManualSave = async () => {
+    if (saveInProgressRef.current) return; // Prevent concurrent saves
+    
+    // Clear any pending auto-save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveInProgressRef.current = true;
+    try {
+      await saveRetroData();
+      // Update the last saved items reference
+      lastSavedItemsRef.current = JSON.stringify(retroItems);
+    } finally {
+      saveInProgressRef.current = false;
     }
   };
-
-  useEffect(() => {
-    if (retroItems.length > 0 && sprint) {
-      const timeoutId = setTimeout(saveRetroData, 1000);
-      return () => clearTimeout(timeoutId);
-    }
-    return undefined;
-  }, [retroItems, sprint]);
 
   const handleAddItem = (type: 'went-well' | 'improve' | 'action'): void => {
     if (!newItem.content.trim() || !user) return;
@@ -921,6 +974,37 @@ const EnhancedRetrospectiveTab: React.FC<EnhancedRetrospectiveTabProps> = ({ boa
           <div>
             <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">{sprint.name} Retrospective</h2>
             <p className="text-sm tablet:text-base text-slate-600 mt-1">Reflect on what happened and plan improvements for the next sprint</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Save Status Indicator */}
+            <div className="flex items-center gap-2">
+              {saveStatus === 'saving' && (
+                <div className="flex items-center gap-2 text-blue-600">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-sm">Saving...</span>
+                </div>
+              )}
+              {saveStatus === 'saved' && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle size={16} />
+                  <span className="text-sm">Saved</span>
+                </div>
+              )}
+              {saveStatus === 'error' && (
+                <div className="flex items-center gap-2 text-red-600">
+                  <AlertCircle size={16} />
+                  <span className="text-sm">Save failed</span>
+                </div>
+              )}
+            </div>
+            {/* Manual Save Button */}
+            <button
+              onClick={handleManualSave}
+              disabled={saveStatus === 'saving'}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Save Now
+            </button>
           </div>
         </div>
 

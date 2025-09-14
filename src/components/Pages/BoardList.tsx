@@ -142,7 +142,6 @@ const BoardList: React.FC = () => {
           <div className="flex-1">
             {boards.length === 0 ? (
               <div className="text-center py-12">
-                <div className="text-slate-400 text-6xl mb-4">📋</div>
                 <h3 className="text-xl font-semibold text-slate-600 mb-2">No boards yet</h3>
                 <p className="text-slate-500 mb-6">Create your first project board to get started</p>
                 <button

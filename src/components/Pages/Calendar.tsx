@@ -89,9 +89,10 @@ const CompactCalendar: React.FC<CompactCalendarProps> = ({ boards, onClose }) =>
 
   // Calendar helper functions
   const isOverdue = (task: CalendarTask) => {
-    if (!task.dueDate || task.status === 'done') return false;
+    if (!task.dueDate || task.status === 'done' || task.status === 'completed') return false;
     const taskDate = new Date(task.dueDate);
     const today = new Date();
+    taskDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
     return taskDate < today;
   };

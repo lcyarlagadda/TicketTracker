@@ -96,7 +96,9 @@ export const boardsSlice = createSlice({
       })
       .addCase(createBoard.fulfilled, (state, action) => {
         state.loading = false;
-        state.boards.push(action.payload);
+        // Don't add to Redux state here since useBoardsSync will handle it via real-time listener
+        // This prevents duplicates when both createBoard action and real-time listener try to add the same board
+        // The real-time listener will pick up the new board from Firebase and update the state
       })
       .addCase(createBoard.rejected, (state, action) => {
         state.loading = false;
