@@ -1,6 +1,24 @@
 // components/Pages/TaskBoard.tsx - Enhanced with Sprint Management, Task Types, and Epic Support
 import React, { useEffect, useState, useMemo } from "react";
-import { DragDropContext, Droppable, DropResult } from "@hello-pangea/dnd";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+  rectIntersection,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import {
+  useDroppable,
+} from "@dnd-kit/core";
 import {
   Plus,
   Users,
@@ -58,6 +76,58 @@ import { boardService } from "../../services/boardService";
 import FilterSection from "../Atoms/Filter";
 import { hasPermissionLegacy, getRoleDisplayName } from "../../utils/permissions";
 
+// Droppable Column Component - Simplified
+const DroppableColumn: React.FC<{
+  status: string;
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+  children: React.ReactNode;
+}> = ({ status, tasks, onTaskClick, children }) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: status,
+  });
+
+  console.log(`DroppableColumn ${status}:`, { isOver, taskCount: tasks.length });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`bg-slate-50 border border-slate-200 rounded-xl shadow-sm flex flex-col transition-all duration-200 ${
+        isOver ? "bg-blue-50 border-blue-300 shadow-md" : "hover:shadow-md"
+      }`}
+      style={{ 
+        width: "260px", 
+        minWidth: "260px",
+        height: "calc(100vh - 200px)",
+        minHeight: "calc(100vh - 200px)"
+      }}
+    >
+      {children}
+      
+      {/* Droppable Area */}
+      <div
+        className="p-4 flex-1 overflow-y-auto bg-white rounded-b-xl"
+        style={{
+          minHeight: "calc(100vh - 300px)"
+        }}
+      >
+        <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+          <div>
+            {tasks.map((task, index) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                index={index}
+                onClick={onTaskClick}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </div>
+    </div>
+  );
+};
+
 interface TaskBoardProps {
   boardId: string;
 }
@@ -90,6 +160,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   const [columnToDelete, setColumnToDelete] = useState<string | null>(null);
   const [moveToColumn, setMoveToColumn] = useState<string>("");
   const [showRoleManagement, setShowRoleManagement] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -205,17 +276,59 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     setCurrentSprint(activeSprint || null);
   }, [sprints]);
 
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination || !user || !currentBoard) return;
+  // Configure sensors for drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
-    const { draggableId, destination, source } = result;
-    const newStatus = destination.droppableId;
-    const oldStatus = source.droppableId;
+  const handleDragStart = (event: DragStartEvent) => {
+    console.log('Drag started:', event);
+    console.log('Active element:', event.active);
+    setActiveId(event.active.id as string);
+  };
 
-    if (newStatus === oldStatus && destination.index === source.index) return;
+  const handleDragEnd = async (event: DragEndEvent) => {
+    console.log('Drag end result:', event);
+    
+    const { active, over } = event;
+    
+    if (!over || !user || !currentBoard) {
+      console.log('Drag end early return:', { over, user: !!user, currentBoard: !!currentBoard });
+      setActiveId(null);
+      return;
+    }
 
-    const taskToUpdate = tasks.find((t) => t.id === draggableId);
-    if (!taskToUpdate || taskToUpdate.status === newStatus) return;
+    const taskId = active.id as string;
+    const newStatus = over.id as string;
+
+    console.log('Drag details:', { taskId, newStatus });
+    console.log('Available statuses:', currentBoard.statuses);
+
+    // Validate that the newStatus is a valid status
+    if (!currentBoard.statuses.includes(newStatus)) {
+      console.error('Invalid status:', newStatus, 'Available:', currentBoard.statuses);
+      setActiveId(null);
+      return;
+    }
+
+    const taskToUpdate = tasks.find((t) => t.id === taskId);
+    if (!taskToUpdate) {
+      console.error('Task not found:', taskId);
+      setActiveId(null);
+      return;
+    }
+    
+    if (taskToUpdate.status === newStatus) {
+      console.log('Task already in target status');
+      setActiveId(null);
+      return;
+    }
+
+    console.log('Updating task:', { taskId, from: taskToUpdate.status, to: newStatus });
 
     const updatedProgressLog = [
       ...(taskToUpdate.progressLog || []),
@@ -227,14 +340,21 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
       },
     ];
 
-    dispatch(
-      updateTask({
-        userId: user.uid,
-        boardId,
-        taskId: draggableId,
-        updates: { status: newStatus, progressLog: updatedProgressLog },
-      })
-    );
+    try {
+      dispatch(
+        updateTask({
+          userId: user.uid,
+          boardId,
+          taskId: taskId,
+          updates: { status: newStatus, progressLog: updatedProgressLog },
+        })
+      );
+      console.log('Task update dispatched successfully');
+    } catch (error) {
+      console.error('Error updating task:', error);
+    } finally {
+      setActiveId(null);
+    }
   };
 
   // Enhanced Board Tools Component with Sprint Context
@@ -952,20 +1072,33 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
           {/* Kanban Board Container */}
           <div className="flex-1 min-h-0">
-            <div className="h-full overflow-auto px-2 tablet:px-4">
-              <DragDropContext onDragEnd={handleDragEnd}>
+            <div className="h-full overflow-auto px-2 tablet:px-4" style={{ height: "calc(100vh - 120px)" }}>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={rectIntersection}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragOver={(event) => {
+                  console.log('Drag over:', event.over?.id);
+                }}
+              >
                 <div
-                  className="flex gap-3 tablet:gap-4 pb-6 overflow-x-auto"
-                  style={{ width: "max-content", minWidth: "100%" }}
+                  className="flex gap-4 pb-6 overflow-x-auto items-start px-2"
+                  style={{ 
+                    width: "max-content", 
+                    minWidth: "100%",
+                    minHeight: "calc(100vh - 200px)"
+                  }}
                 >
                   {currentBoard.statuses.map((status, index) => (
-                    <div
+                    <DroppableColumn
                       key={status}
-                      className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/60 shadow-xl flex-shrink-0 group"
-                      style={{ width: "260px", minWidth: "260px" }}
+                      status={status}
+                      tasks={tasksByStatus(status)}
+                      onTaskClick={(task) => dispatch(setSelectedTask(task))}
                     >
                       {/* Column Header */}
-                      <div className="p-2 tablet:p-3 border-b border-slate-200/60">
+                      <div className="p-4 border-b border-slate-200 flex-shrink-0 bg-white rounded-t-xl group">
                         <div className="flex justify-between items-center">
                           {editingStatus === status ? (
                             <input
@@ -984,18 +1117,18 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               autoFocus
                             />
                           ) : (
-                            <div className="flex items-center gap-2 flex-1">
-                              <h3 className="text-lg font-bold capitalize flex-1 text-slate-800">
+                            <div className="flex items-center gap-3 flex-1">
+                              <h3 className="text-lg font-semibold capitalize flex-1 text-slate-800">
                                 {status}
                               </h3>
                               {hasPermissionLegacy(currentBoard, user?.email || '', 'canManageColumns') && (
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity duration-200">
                                   <button
                                     onClick={() => {
                                       setEditingStatus(status);
                                       setNewStatusName(status);
                                     }}
-                                    className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-all"
+                                    className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all duration-150 border border-transparent hover:border-blue-200"
                                     title="Rename column"
                                   >
                                     <Edit size={14} />
@@ -1003,7 +1136,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                                   {currentBoard.statuses.length > 1 && (
                                     <button
                                       onClick={() => handleDeleteColumn(status)}
-                                      className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-100 transition-all"
+                                      className="p-1.5 rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all duration-150 border border-transparent hover:border-red-200"
                                       title="Delete column"
                                     >
                                       <Trash2 size={14} />
@@ -1013,52 +1146,12 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               )}
                             </div>
                           )}
-                          <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full ml-2">
+                          <span className="text-xs font-medium text-slate-600 bg-slate-200 px-2 py-1 rounded-full">
                             {tasksByStatus(status).length}
                           </span>
                         </div>
                       </div>
-
-                      {/* Droppable Area */}
-                      <Droppable droppableId={status} type="TASK">
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.droppableProps}
-                            className={`p-3 transition-all duration-200 ${
-                              snapshot.isDraggingOver
-                                ? "bg-blue-50/80 border-2 border-dashed border-blue-300 rounded-xl"
-                                : ""
-                            }`}
-                            style={{
-                              minHeight: "200px",
-                            }}
-                          >
-                            <div className="space-y-2 tablet:space-y-3">
-                              {tasksByStatus(status).map((task, index) => (
-                                <div
-                                  key={task.id}
-                                  style={{
-                                    position: "relative",
-                                    zIndex: 1001,
-                                  }}
-                                >
-                                  <TaskCard
-                                    task={task}
-                                    index={index}
-                                    onClick={(task) =>
-                                      dispatch(setSelectedTask(task))
-                                    }
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                            {provided.placeholder}
-                            <div style={{ minHeight: "20px" }} />
-                          </div>
-                        )}
-                      </Droppable>
-                    </div>
+                    </DroppableColumn>
                   ))}
 
                   {/* Add Column Button */}
@@ -1124,7 +1217,31 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                     </div>
                   )}
                 </div>
-              </DragDropContext>
+                
+                <DragOverlay>
+                  {activeId ? (
+                    <div className="bg-white border-2 border-slate-300 p-4 m-2 opacity-95 shadow-2xl rounded-xl transform scale-105">
+                      {/* Drag indicator */}
+                      <div className="p-2 mb-3 bg-slate-100 rounded-lg border border-slate-300">
+                        <div className="text-xs text-slate-600 font-medium flex items-center gap-2">
+                          <div className="w-2 h-2 bg-slate-500 rounded-full animate-pulse"></div>
+                          Dragging...
+                        </div>
+                      </div>
+                      
+                      {/* Task content */}
+                      <div>
+                        <div className="font-semibold text-slate-800 text-sm">
+                          {tasks.find(t => t.id === activeId)?.title || 'Task'}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {tasks.find(t => t.id === activeId)?.priority || 'Medium'} Priority
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             </div>
           </div>
         </div>

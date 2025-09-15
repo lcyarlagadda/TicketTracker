@@ -1,7 +1,8 @@
 // components/Templates/TaskCard.tsx
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Draggable } from '@hello-pangea/dnd';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Pencil, Trash2, UserCircle, Calendar, CheckSquare, Square, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
 import { deleteTask } from '../../store/slices/taskSlice';
@@ -23,6 +24,22 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
   const [childTasks, setChildTasks] = useState<Task[]>([]);
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  console.log(`TaskCard ${task.id}:`, { isDragging, transform });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   const priorityConfig = {
     Low: { 
@@ -168,85 +185,83 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
     }
   };
 
-  const isOverdue = (() => {
-    if (!task.dueDate || task.status === 'done' || task.status === 'completed') return false;
-    const taskDate = new Date(task.dueDate);
-    const today = new Date();
-    taskDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    return taskDate < today;
-  })();
 
   return (
     <>
-      <Draggable draggableId={task.id} index={index}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.draggableProps}
-            {...provided.dragHandleProps}
-            className={`group relative bg-white rounded-xl border border-slate-200 shadow-lg hover:shadow-xl cursor-pointer transition-all duration-300 overflow-hidden ${
-              snapshot.isDragging 
-                ? 'rotate-2 scale-105 z-50 shadow-2xl' 
-                : 'hover:scale-[1.02]'
-            }`}
-            style={{
-              ...provided.draggableProps.style,
-              ...(snapshot.isDragging && { 
-                transform: `${provided.draggableProps.style?.transform} rotate(2deg)`,
-                zIndex: 1000 
-              })
-            }}
-            onClick={handleCardClick}
-          >
-            <div className={`h-1 bg-gradient-to-r ${config.gradient}`}></div>
-            
-            <div className="p-3">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`group bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-2 mb-2 ${
+          isDragging 
+            ? 'opacity-30 shadow-lg' 
+            : 'hover:border-slate-300'
+        }`}
+      >
+        {/* Colorful top border based on priority */}
+        <div className={`h-1 w-full rounded-t-lg ${config.gradient}`}></div>
+        
+        {/* Drag Handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-2 mb-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 border border-slate-300 shadow-sm hover:shadow-md"
+        >
+          <div className="text-xs text-slate-600 flex items-center justify-center">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <circle cx="3" cy="3" r="1"/>
+              <circle cx="9" cy="3" r="1"/>
+              <circle cx="3" cy="6" r="1"/>
+              <circle cx="9" cy="6" r="1"/>
+              <circle cx="3" cy="9" r="1"/>
+              <circle cx="9" cy="9" r="1"/>
+            </svg>
+          </div>
+        </div>
+        
+        <div onClick={handleCardClick}>
               {/* Header with Task ID and Actions */}
-              <div className="flex justify-between items-start mb-2">
-                <div className="flex items-center gap-2">
+              <div className="flex justify-between items-start mb-1">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={handleCopyTaskId}
-                    className="flex items-center gap-1 px-1.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono text-slate-600 transition-colors"
+                    className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-xs font-mono text-slate-600 transition-colors duration-150"
                     title="Copy Task ID"
                   >
-                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {copied ? <Check size={10} /> : <Copy size={10} />}
                     {task.id.slice(-8)}
                   </button>
-                  <div className={`px-1.5 py-0.5 rounded-lg ${typeConfig.bg} ${typeConfig.border} border`}>
-                    <span className={`text-xs font-medium ${typeConfig.text}`}>
-                      {typeConfig.label}
-                    </span>
+                  <div className={`px-1.5 py-0.5 rounded text-xs font-medium ${typeConfig.bg} ${typeConfig.border} border ${typeConfig.text}`}>
+                    {typeConfig.label}
                   </div>
                 </div>
                 
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                   <button
                     onClick={handleEditClick}
-                    className="p-1 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600 transition-colors"
+                    className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors duration-150"
                     title="Edit Task"
                   >
-                    <Pencil size={14} />
+                    <Pencil size={12} />
                   </button>
                   <button
                     onClick={handleDeleteClick}
-                    className="p-1 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
+                    className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors duration-150"
                     title="Delete Task"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={12} />
                   </button>
                 </div>
               </div>
 
               {/* Task Title */}
-              <h4 className="font-semibold text-slate-800 leading-tight mb-2 group-hover:text-slate-900 transition-colors text-sm">
+              <h4 className="font-semibold text-slate-800 leading-tight mb-1 group-hover:text-slate-900 transition-colors text-sm">
                 {task.title}
               </h4>
 
               {childTasks.length > 0 && (
-                <div className="mb-2">
+                <div className="mb-1">
                   <div 
-                    className="flex items-center justify-between p-1.5 bg-emerald-50 rounded-lg cursor-pointer hover:bg-emerald-100 transition-colors"
+                    className="flex items-center justify-between p-1.5 bg-emerald-50 rounded-md cursor-pointer hover:bg-emerald-100 transition-colors"
                     onClick={handleSubtaskToggle}
                   >
                     <div className="flex items-center gap-2">
@@ -319,24 +334,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                 )}
               </div>
 
-              <div className="flex justify-between items-center mb-2">
-                <div className={`px-1.5 py-0.5 rounded-lg ${config.bg} ${config.border} border`}>
-                  <span className={`text-xs font-medium ${config.text}`}>
-                    {task.priority}
-                  </span>
-                </div>
-                
-                {task.dueDate && (
-                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs font-medium ${
-                    isOverdue 
-                      ? 'bg-red-50 border border-red-200 text-red-700' 
-                      : 'bg-blue-50 border border-blue-200 text-blue-700'
-                  }`}>
-                    <Calendar size={10} />
-                    {new Date(task.dueDate).toLocaleDateString()}
-                  </div>
-                )}
-              </div>
               
               {task.epics?.length > 0 && (
                 <div className="flex flex-wrap gap-0.5">
@@ -355,10 +352,21 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                   )}
                 </div>
               )}
-            </div>
-          </div>
-        )}
-      </Draggable>
+              
+              {/* Bottom badges for priority and due date */}
+              <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                <div className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text} border ${config.border}`}>
+                  {task.priority}
+                </div>
+                {task.dueDate && (
+                  <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-200">
+                    <Calendar size={10} />
+                    {new Date(task.dueDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                  </div>
+                )}
+              </div>
+        </div>
+      </div>
 
       {showConfirm && createPortal(
         <ConfirmModal
