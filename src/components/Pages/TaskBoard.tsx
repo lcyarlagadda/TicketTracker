@@ -87,7 +87,6 @@ const DroppableColumn: React.FC<{
     id: status,
   });
 
-  console.log(`DroppableColumn ${status}:`, { isOver, taskCount: tasks.length });
 
   return (
     <div
@@ -286,33 +285,31 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    console.log('Drag started:', event);
-    console.log('Active element:', event.active);
     setActiveId(event.active.id as string);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    console.log('Drag end result:', event);
     
     const { active, over } = event;
     
     if (!over || !user || !currentBoard) {
-      console.log('Drag end early return:', { over, user: !!user, currentBoard: !!currentBoard });
       setActiveId(null);
       return;
     }
 
     const taskId = active.id as string;
-    const newStatus = over.id as string;
+    let newStatus = over.id as string;
 
-    console.log('Drag details:', { taskId, newStatus });
-    console.log('Available statuses:', currentBoard.statuses);
-
-    // Validate that the newStatus is a valid status
+    // If the drop target is a task card, find which column it belongs to
     if (!currentBoard.statuses.includes(newStatus)) {
-      console.error('Invalid status:', newStatus, 'Available:', currentBoard.statuses);
-      setActiveId(null);
-      return;
+      const targetTask = tasks.find(t => t.id === newStatus);
+      if (targetTask) {
+        newStatus = targetTask.status;
+      } else {
+        console.error('Invalid drop target:', newStatus, 'Available:', currentBoard.statuses);
+        setActiveId(null);
+        return;
+      }
     }
 
     const taskToUpdate = tasks.find((t) => t.id === taskId);
@@ -323,12 +320,10 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
     }
     
     if (taskToUpdate.status === newStatus) {
-      console.log('Task already in target status');
       setActiveId(null);
       return;
     }
 
-    console.log('Updating task:', { taskId, from: taskToUpdate.status, to: newStatus });
 
     const updatedProgressLog = [
       ...(taskToUpdate.progressLog || []),
@@ -349,7 +344,6 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
           updates: { status: newStatus, progressLog: updatedProgressLog },
         })
       );
-      console.log('Task update dispatched successfully');
     } catch (error) {
       console.error('Error updating task:', error);
     } finally {
@@ -1079,7 +1073,6 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 onDragOver={(event) => {
-                  console.log('Drag over:', event.over?.id);
                 }}
               >
                 <div

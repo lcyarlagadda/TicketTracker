@@ -67,9 +67,7 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
 
   // Fetch team reflections for managers only
   const fetchTeamReflections = async (sprintId: string, currentRole: string) => {
-    console.log('fetchTeamReflections called with:', { currentRole, boardId: board.id, sprintId });
     if (!user || !board.id || currentRole !== 'manager') {
-      console.log('fetchTeamReflections early return:', { user: !!user, boardId: board.id, currentRole });
       return;
     }
 
@@ -107,7 +105,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
               );
               if (testReflection && testReflection.userEmail === collaborator.email) {
                 reflection = testReflection;
-                console.log(`Found reflection for ${collaborator.email} using UID ${uid}:`, reflection);
                 break;
               }
             } catch (error) {
@@ -122,7 +119,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
         }
       }
       
-      console.log('Team reflections fetched:', teamReflectionsData);
       setTeamReflections(teamReflectionsData);
     } catch (error) {
       console.error('Error fetching team reflections:', error);
@@ -143,7 +139,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
           
           // Determine user role using legacy system (consistent with other components)
           const role = getUserRoleLegacy(board, user.email || '');
-          console.log('User role from board.collaborators (legacy):', role);
           setUserRole(role || 'user');
 
           // Fetch user's own reflection data
@@ -184,7 +179,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
               });
             }
           } catch (error) {
-            console.log('No reflection data found for user');
             // Initialize with proper user metadata if no reflection exists
             setReflectionData({
               sprintId: sprint.id,
@@ -203,7 +197,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
 
           // Fetch team reflections if user is manager (using legacy role system)
           const currentRole = getUserRoleLegacy(board, user.email || '');
-          console.log('Current role for team reflections fetch (legacy):', currentRole);
           if (currentRole === 'manager') {
             await fetchTeamReflections(sprint.id, currentRole);
           }
@@ -227,7 +220,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
     );
     
     if (!hasContent) {
-      console.log('No content to save, skipping auto-save');
       return;
     }
 
@@ -248,7 +240,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
       };
 
       const cleanedData = cleanReflectionData(reflectionData);
-      console.log('Saving reflection data with content:', cleanedData);
       
       await privateReflectionService.savePrivateReflection(
         user.uid,
@@ -259,7 +250,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
         sprint.sprintNumber,
         cleanedData
       );
-      console.log('Reflection data saved successfully');
     } catch (error) {
       console.error('Error saving reflection data:', error);
     }
@@ -280,14 +270,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
 
   const handleAddReflection = async (): Promise<void> => {
     if (!newReflection.content.trim() || !user) return;
-    
-    console.log('Adding reflection:', {
-      content: newReflection.content.trim(),
-      category: newReflection.category,
-      activeTab,
-      selectedTeamMember,
-      userRole
-    });
 
     const category =
       activeTab === "personal"
@@ -353,7 +335,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
             sprint?.sprintNumber || 0,
             updatedTeamMemberData
           );
-          console.log(`Saved manager response for ${selectedTeamMember} using UID ${teamMemberUid}`);
         } else {
           console.error(`Could not find UID for team member ${selectedTeamMember}`);
         }
@@ -367,7 +348,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
           userReview: newItem
         }
       };
-      console.log('Updated reflection data:', updatedReflectionData);
       setReflectionData(updatedReflectionData);
     }
 
@@ -642,10 +622,6 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
               <div className="text-xs text-slate-500">
                 {board.collaborators.filter(collab => collab.email !== user?.email).length} team members
               </div>
-            </div>
-            {/* Debug info */}
-            <div className="mt-2 text-xs text-slate-400">
-              Debug: userRole={userRole}, collaborators={board.collaborators.length}
             </div>
           </div>
         )}

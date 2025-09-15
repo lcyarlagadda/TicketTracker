@@ -48,12 +48,6 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   useEffect(() => {
     if (currentBoard && user) {
       const hasPermission = hasPermissionLegacy(currentBoard, user.email || '', 'canManageSprints');
-      console.log('Sprint Planning Permission Check:', {
-        userEmail: user.email,
-        boardCollaborators: currentBoard.collaborators,
-        hasPermission,
-        currentBoard: currentBoard
-      });
       setCanManageSprints(hasPermission);
     }
   }, [currentBoard, user]);
@@ -139,7 +133,6 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
 
   // Sprint actions
   const startSprint = async (sprintId: string) => {
-    console.log('Start Sprint clicked:', { sprintId, user: user?.email, canManageSprints });
     if (!user || !currentBoard) return;
     
     try {
@@ -154,7 +147,6 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   };
 
   const completeSprint = async (sprintId: string) => {
-    console.log('Complete Sprint clicked:', { sprintId, user: user?.email, canManageSprints });
     if (!user || !currentBoard) return;
     
     try {

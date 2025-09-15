@@ -34,7 +34,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
     isDragging,
   } = useSortable({ id: task.id });
 
-  console.log(`TaskCard ${task.id}:`, { isDragging, transform });
 
   const style = {
     transform: CSS.Transform.toString(transform),

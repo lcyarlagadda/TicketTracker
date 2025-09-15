@@ -76,22 +76,6 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const taskAssignees = [...new Set(tasks.map(t => t.assignedTo?.name).filter(Boolean))] as string[];
     const finalContributors = contributors.length > 0 ? contributors : taskAssignees;
     
-    // Debug logging
-    console.log('Analytics Debug:', {
-      boardCollaborators: board.collaborators,
-      contributorNames: contributors,
-      taskAssignees,
-      finalContributors,
-      totalTasks: tasks.length,
-      sampleTasks: tasks.slice(0, 3).map(t => ({
-        id: t.id,
-        title: t.title,
-        assignedTo: t.assignedTo,
-        status: t.status
-      })),
-      allTaskAssignees: [...new Set(tasks.map(t => t.assignedTo?.name).filter(Boolean))],
-      allCollaboratorNames: board.collaborators?.map(c => c.name) || []
-    });
 
     const result = finalContributors
       .map((contributor) => {
@@ -99,16 +83,6 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           (t) => t.assignedTo?.name === contributor
         );
         
-        console.log(`Contributor "${contributor}" tasks:`, {
-          totalTasks: contributorTasks.length,
-          tasks: contributorTasks.map(t => ({
-            id: t.id,
-            title: t.title,
-            status: t.status,
-            points: t.points,
-            assignedTo: t.assignedTo
-          }))
-        });
         const completedTasks = contributorTasks.filter(
           (t) => t.status === "done" || t.status === "Done" || t.status === "completed"
         );
@@ -205,22 +179,12 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           velocity: isNaN(velocity) ? 0 : Math.round(velocity * 10) / 10,
         };
         
-        console.log(`Contributor "${contributor}" final data:`, result);
         return result;
       })
       .filter(contributor => {
-        const hasTasks = contributor.taskCount > 0;
-        console.log(`Contributor ${contributor.name}: ${contributor.taskCount} tasks, hasTasks: ${hasTasks}`);
-        console.log(`Contributor data:`, contributor);
-        return true; // Show all contributors for debugging
-      }) // Temporarily show all contributors for debugging
+        return contributor.taskCount > 0;
+      })
       .sort((a, b) => b.pointsCompleted - a.pointsCompleted);
-
-    console.log('Contributor Metrics Result:', {
-      totalContributors: result.length,
-      contributorsWithTasks: result.filter(c => c.taskCount > 0).length,
-      result
-    });
 
     return result;
   }, [tasks, timeRange, board.collaborators]);
@@ -281,22 +245,6 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     );
     const cycleTimeMap = new Map();
 
-    console.log('Cycle Time Debug:', {
-      totalTasks: tasks.length,
-      completedTasks: completedTasks.length,
-      completedTaskStatuses: [...new Set(tasks.map(t => t.status))],
-      sampleCompletedTasks: completedTasks.slice(0, 3).map(t => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        progressLog: t.progressLog?.length || 0,
-        progressLogEntries: t.progressLog?.slice(0, 3).map(log => ({
-          type: log.type,
-          desc: log.desc,
-          timestamp: log.timestamp
-        })) || []
-      }))
-    });
 
     completedTasks.forEach((task) => {
       const startLog = task.progressLog?.find(
@@ -339,12 +287,6 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       count,
       percentage: Math.round((count / completedTasks.length) * 100),
     }));
-
-    console.log('Cycle Time Result:', {
-      cycleTimeMap: Object.fromEntries(cycleTimeMap),
-      result,
-      completedTasksLength: completedTasks.length
-    });
 
     return result;
   }, [tasks]);
@@ -548,23 +490,11 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </div>
           );
         }
-        console.log('Contributors Chart Data:', contributorMetrics);
-        
-        // Check if all values are 0 and add some sample data for testing
-        const hasData = contributorMetrics.some(c => c.pointsCompleted > 0 || c.pointsInProgress > 0 || c.pointsTotal > 0);
-        const chartData = hasData ? contributorMetrics : contributorMetrics.map(c => ({
-          ...c,
-          pointsCompleted: 1,
-          pointsInProgress: 1,
-          pointsTotal: 2
-        }));
-        
-        console.log('Chart Data (with fallback):', chartData);
         
         return (
           <ResponsiveContainer width="100%" height={400}>
             <BarChart 
-              data={chartData} 
+              data={contributorMetrics} 
               margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
