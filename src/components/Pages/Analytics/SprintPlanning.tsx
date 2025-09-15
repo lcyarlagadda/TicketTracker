@@ -48,6 +48,12 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   useEffect(() => {
     if (currentBoard && user) {
       const hasPermission = hasPermissionLegacy(currentBoard, user.email || '', 'canManageSprints');
+      console.log('Sprint Planning Permission Check:', {
+        userEmail: user.email,
+        boardCollaborators: currentBoard.collaborators,
+        hasPermission,
+        currentBoard: currentBoard
+      });
       setCanManageSprints(hasPermission);
     }
   }, [currentBoard, user]);
@@ -133,30 +139,32 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
 
   // Sprint actions
   const startSprint = async (sprintId: string) => {
-    if (!user) return;
+    console.log('Start Sprint clicked:', { sprintId, user: user?.email, canManageSprints });
+    if (!user || !currentBoard) return;
     
     try {
-      await sprintService.updateSprint(user.uid, boardId, sprintId, { status: 'active' });
+      await sprintService.updateSprint(user.uid, boardId, sprintId, { status: 'active' }, currentBoard, user.email || '');
       setSprints(prev => prev.map(s => 
         s.id === sprintId ? { ...s, status: 'active' as const } : 
         s.status === 'active' ? { ...s, status: 'completed' as const } : s
       ));
     } catch (error) {
-      // Error('Error starting sprint:', error);
+      console.error('Error starting sprint:', error);
     }
   };
 
   const completeSprint = async (sprintId: string) => {
-    if (!user) return;
+    console.log('Complete Sprint clicked:', { sprintId, user: user?.email, canManageSprints });
+    if (!user || !currentBoard) return;
     
     try {
-      const completedSprint = await sprintService.completeActiveSprint(user.uid, boardId, sprintId);
+      const completedSprint = await sprintService.completeActiveSprint(user.uid, boardId, sprintId, currentBoard, user.email || '');
       setSprints(prev => prev.map(s => s.id === sprintId ? completedSprint : s));
       
       // Show success message or notification
       // Sprint completed successfully with metrics
     } catch (error) {
-      // Error('Error completing sprint:', error);
+      console.error('Error completing sprint:', error);
     }
   };
 

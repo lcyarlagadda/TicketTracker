@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, X, Save } from 'lucide-react';
 import { useAppSelector } from '../../hooks/redux';
-import { Sprint, CreateSprintForm } from '../../store/types/types';
+import { Sprint, CreateSprintForm, Board } from '../../store/types/types';
 import { sprintService } from '../../services/sprintService';
 import { useNavigate } from 'react-router-dom';
 import { hasPermissionLegacy } from '../../utils/permissions';
@@ -15,7 +15,7 @@ interface SprintModalProps {
   onSprintSaved: (sprint: Sprint) => void;
   tasks: any[];
   teamSize: number;
-  currentBoard?: any;
+  currentBoard?: Board | null;
 }
 
 const SprintModal: React.FC<SprintModalProps> = ({
@@ -163,10 +163,13 @@ const SprintModal: React.FC<SprintModalProps> = ({
           taskIds: selectedTasks
         };
 
-        await sprintService.updateSprint(user.uid, boardId, sprint.id, updates);
+        if (!currentBoard) {
+          throw new Error('Board data not available');
+        }
+        await sprintService.updateSprint(user.uid, boardId, sprint.id, updates, currentBoard, user.email || '');
         
         if (selectedTasks.length > 0) {
-          await sprintService.assignTasksToSprint(user.uid, boardId, sprint.id, selectedTasks);
+          await sprintService.assignTasksToSprint(user.uid, boardId, sprint.id, selectedTasks, currentBoard, user.email || '');
         }
 
         onSprintSaved({ ...sprint, ...updates });
@@ -201,10 +204,13 @@ const SprintModal: React.FC<SprintModalProps> = ({
           taskIds: selectedTasks
         };
 
-        const newSprint = await sprintService.createSprint(user.uid, boardId, sprintData);
+        if (!currentBoard) {
+          throw new Error('Board data not available');
+        }
+        const newSprint = await sprintService.createSprint(user.uid, boardId, sprintData, currentBoard, user.email || '');
         
         if (selectedTasks.length > 0) {
-          await sprintService.assignTasksToSprint(user.uid, boardId, newSprint.id, selectedTasks);
+          await sprintService.assignTasksToSprint(user.uid, boardId, newSprint.id, selectedTasks, currentBoard, user.email || '');
         }
 
         onSprintSaved(newSprint);

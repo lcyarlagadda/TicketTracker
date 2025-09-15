@@ -925,8 +925,8 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-semibold text-slate-800 text-xs tablet:text-sm truncate">
-                                    {c.name.length > 10
-                                    ? `${c.name.slice(0, 10)}...`
+                                    {c.name.length > 20
+                                    ? `${c.name.slice(0, 20)}...`
                                     : c.name}
                                   </p>
                                   {/* <span className={`px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800`}>
@@ -1072,7 +1072,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
 
           {/* Kanban Board Container */}
           <div className="flex-1 min-h-0">
-            <div className="h-full overflow-auto px-2 tablet:px-4" style={{ height: "calc(100vh - 120px)" }}>
+            <div className="h-full overflow-auto px-2 tablet:px-4 pb-4" style={{ height: "calc(100vh - 120px)" }}>
               <DndContext
                 sensors={sensors}
                 collisionDetection={rectIntersection}
@@ -1083,7 +1083,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                 }}
               >
                 <div
-                  className="flex gap-4 pb-6 overflow-x-auto items-start px-2"
+                  className="flex gap-4 pb-12 overflow-x-auto items-start px-2"
                   style={{ 
                     width: "max-content", 
                     minWidth: "100%",
@@ -1099,7 +1099,7 @@ const TaskBoard: React.FC<TaskBoardProps> = ({ boardId }) => {
                     >
                       {/* Column Header */}
                       <div className="p-4 border-b border-slate-200 flex-shrink-0 bg-white rounded-t-xl group">
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center gap-3">
                           {editingStatus === status ? (
                             <input
                               value={newStatusName}

@@ -23,10 +23,11 @@ import {
   TabKey,
 } from "../../../store/types/types";
 import { useParams } from "react-router-dom";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "../../../firebase";
 import { sprintService } from "../../../services/sprintService";
 import { privateReflectionService } from "../../../services/privateReflectionService";
+import { getUserRoleLegacy } from "../../../utils/permissions";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "../../../firebase";
 
 interface ReflectionProps {
   board: Board;
@@ -65,10 +66,10 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
 
   // Fetch team reflections for managers only
-  const fetchTeamReflections = async (sprintId: string) => {
-    console.log('fetchTeamReflections called with:', { userRole, boardId: board.id, sprintId });
-    if (!user || !board.id || userRole !== 'manager') {
-      console.log('fetchTeamReflections early return:', { user: !!user, boardId: board.id, userRole });
+  const fetchTeamReflections = async (sprintId: string, currentRole: string) => {
+    console.log('fetchTeamReflections called with:', { currentRole, boardId: board.id, sprintId });
+    if (!user || !board.id || currentRole !== 'manager') {
+      console.log('fetchTeamReflections early return:', { user: !!user, boardId: board.id, currentRole });
       return;
     }
 
@@ -140,24 +141,10 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
         if (sprint) {
           setSprint(sprint);
           
-          // Determine user role
-          const accessDoc = await getDocs(query(
-            collection(db, 'boardAccess'),
-            where('boardId', '==', board.id),
-            where('userId', '==', user.uid)
-          ));
-          
-          if (accessDoc.docs.length > 0) {
-            const role = accessDoc.docs[0].data().role;
-            console.log('User role from boardAccess:', role);
-            setUserRole(role);
-          } else if (board.createdBy.uid === user.uid) {
-            console.log('User is board creator, setting role to admin');
-            setUserRole('admin');
-          } else {
-            console.log('No access found, setting role to user');
-            setUserRole('user');
-          }
+          // Determine user role using legacy system (consistent with other components)
+          const role = getUserRoleLegacy(board, user.email || '');
+          console.log('User role from board.collaborators (legacy):', role);
+          setUserRole(role || 'user');
 
           // Fetch user's own reflection data
           try {
@@ -168,18 +155,57 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
               user.uid
             );
             if (reflection) {
-              setReflectionData(reflection);
+              // Ensure the loaded reflection has proper user metadata
+              const reflectionWithMetadata = {
+                ...reflection,
+                sprintId: reflection.sprintId || sprint.id,
+                sprintNumber: reflection.sprintNumber || sprint.sprintNumber,
+                userId: reflection.userId || user.uid,
+                userEmail: reflection.userEmail || user.email || "",
+                userName: reflection.userName || user.displayName || user.email || "Current User",
+                lastUpdated: reflection.lastUpdated || new Date().toISOString(),
+                isPrivate: true,
+              };
+              setReflectionData(reflectionWithMetadata);
+            } else {
+              // Initialize with proper user metadata if no reflection exists
+              setReflectionData({
+                sprintId: sprint.id,
+                sprintNumber: sprint.sprintNumber,
+                userId: user.uid,
+                userEmail: user.email || "",
+                userName: user.displayName || user.email || "Current User",
+                personalGrowth: {},
+                teamInsights: {},
+                lessonsLearned: {},
+                futureGoals: {},
+                lastUpdated: new Date().toISOString(),
+                isPrivate: true,
+              });
             }
           } catch (error) {
             console.log('No reflection data found for user');
+            // Initialize with proper user metadata if no reflection exists
+            setReflectionData({
+              sprintId: sprint.id,
+              sprintNumber: sprint.sprintNumber,
+              userId: user.uid,
+              userEmail: user.email || "",
+              userName: user.displayName || user.email || "Current User",
+              personalGrowth: {},
+              teamInsights: {},
+              lessonsLearned: {},
+              futureGoals: {},
+              lastUpdated: new Date().toISOString(),
+              isPrivate: true,
+            });
           }
 
-          // Fetch team reflections if user is manager only
-          const currentRole = accessDoc.docs.length > 0 ? accessDoc.docs[0].data().role : 
-                             (board.createdBy.uid === user.uid ? 'admin' : 'user');
-          console.log('Current role for team reflections fetch:', currentRole);
+          // Fetch team reflections if user is manager (using legacy role system)
+          const currentRole = getUserRoleLegacy(board, user.email || '');
+          console.log('Current role for team reflections fetch (legacy):', currentRole);
           if (currentRole === 'manager') {
-            await fetchTeamReflections(sprint.id);
+            await fetchTeamReflections(sprint.id, currentRole);
           }
         }
       } catch (error) {
@@ -188,7 +214,7 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
     };
 
     fetchSprintData();
-  }, [user, board.id, sprintNo, board, userRole]);
+  }, [user, board.id, sprintNo, board]);
 
   // Auto-save reflection data
   const saveReflectionData = useCallback(async (): Promise<void> => {
@@ -278,11 +304,11 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
       author: user.displayName || user.email || "Current User",
       authorEmail: user.email || "",
       createdAt: new Date().toISOString(),
-      ...(selectedTeamMember && (userRole === 'manager' || userRole === 'admin') && { rating: newReflection.rating || 0 })
+      ...(selectedTeamMember && userRole === 'manager' && { rating: newReflection.rating || 0 })
     };
 
     // If viewing team member reflections, save manager response to their data
-    if (selectedTeamMember && (userRole === 'manager' || userRole === 'admin')) {
+    if (selectedTeamMember && userRole === 'manager') {
       const teamMemberData = teamReflections[selectedTeamMember];
       if (teamMemberData) {
         const updatedTeamMemberData = {
@@ -363,7 +389,7 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
         ? "lessonsLearned"
         : "futureGoals";
 
-    if (selectedTeamMember && (userRole === 'manager' || userRole === 'admin')) {
+    if (selectedTeamMember && userRole === 'manager') {
       const teamMemberData = teamReflections[selectedTeamMember];
       return teamMemberData ? teamMemberData[category] : {};
     }
@@ -372,11 +398,11 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
   };
 
   const canAddUserReview = (): boolean => {
-    if (userRole === 'manager') {
-      return false; // Managers can't add user reviews (they only provide manager responses)
-    }
     if (selectedTeamMember) {
       return false; // Can't add user reviews when viewing team members
+    }
+    if (userRole === 'manager') {
+      return false; // Managers can't add self reviews
     }
     const categoryData = getCurrentCategoryData();
     return !categoryData.userReview; // Can add if no user review exists
@@ -577,7 +603,7 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
           <div className="flex-1">
             <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">
               {sprint?.name} - Reflection
-              {(userRole === 'manager' || userRole === 'admin') && selectedTeamMember && (
+              {userRole === 'manager' && selectedTeamMember && (
                 <span className="text-lg font-normal text-slate-600 ml-2">
                   - {board.collaborators.find(c => c.email === selectedTeamMember)?.name}
                 </span>
@@ -604,7 +630,7 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
                 onChange={(e) => setSelectedTeamMember(e.target.value)}
                 className="flex-1 p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="">View My Own Reflections</option>
+                <option value="">Select Team Member</option>
                 {board.collaborators
                   .filter(collab => collab.email !== user?.email)
                   .map((collab) => (
@@ -627,78 +653,106 @@ const Reflection: React.FC<ReflectionProps> = ({ board, tasks }) => {
 
       {/* Reflection Metrics */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
-        <div className="grid grid-cols-2 tablet:grid-cols-4 gap-4">
-          {/* Total Reflections */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
-            <div className="text-2xl tablet:text-3xl font-bold text-blue-600 mb-1">
-              {(() => {
-                const total = Object.values(reflectionData).filter(cat => 
-                  cat.userReview || cat.managerResponse
-                ).length;
-                return total;
-              })()}
-            </div>
-            <div className="text-sm font-medium text-blue-700">Total Reflections</div>
-          </div>
+        <div className={`grid gap-4 ${userRole === 'manager' && selectedTeamMember ? 'grid-cols-2' : 'grid-cols-2 tablet:grid-cols-4'}`}>
+          
+          {/* Show all metrics for users, or team member metrics for managers */}
+          {userRole !== 'manager' || selectedTeamMember ? (
+            <>
+              {/* Total Reflections - only show for users or when manager has selected a team member */}
+              {(userRole !== 'manager' || selectedTeamMember) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+                  <div className="text-2xl tablet:text-3xl font-bold text-blue-600 mb-1">
+                    {(() => {
+                      const dataToUse = userRole === 'manager' && selectedTeamMember 
+                        ? teamReflections[selectedTeamMember] || {}
+                        : reflectionData;
+                      const total = Object.values(dataToUse).filter(cat => 
+                        cat && typeof cat === 'object' && (cat.userReview || cat.managerResponse)
+                      ).length;
+                      return total;
+                    })()}
+                  </div>
+                  <div className="text-sm font-medium text-blue-700">Total Reflections</div>
+                </div>
+              )}
 
-          {/* Self Reviews */}
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-            <div className="text-2xl tablet:text-3xl font-bold text-green-600 mb-1">
-              {(() => {
-                const selfReviews = Object.values(reflectionData).filter(cat => 
-                  cat.userReview
-                ).length;
-                return selfReviews;
-              })()}
-            </div>
-            <div className="text-sm font-medium text-green-700">Self Reviews</div>
-          </div>
+              {/* Self Reviews */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                <div className="text-2xl tablet:text-3xl font-bold text-green-600 mb-1">
+                  {(() => {
+                    const dataToUse = userRole === 'manager' && selectedTeamMember 
+                      ? teamReflections[selectedTeamMember] || {}
+                      : reflectionData;
+                    const selfReviews = Object.values(dataToUse).filter(cat => 
+                      cat && typeof cat === 'object' && cat.userReview
+                    ).length;
+                    return selfReviews;
+                  })()}
+                </div>
+                <div className="text-sm font-medium text-green-700">Self Reviews</div>
+              </div>
 
-          {/* Manager Reviews */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4 text-center">
-            <div className="text-2xl tablet:text-3xl font-bold text-slate-800 mb-1">
-              {(() => {
-                const managerReviews = Object.values(reflectionData).filter(cat => 
-                  cat.managerResponse
-                ).length;
-                return managerReviews;
-              })()}
-            </div>
-            <div className="text-sm font-medium text-slate-700">Manager Reviews</div>
-          </div>
+              {/* Manager Reviews */}
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
+                <div className="text-2xl tablet:text-3xl font-bold text-purple-600 mb-1">
+                  {(() => {
+                    const dataToUse = userRole === 'manager' && selectedTeamMember 
+                      ? teamReflections[selectedTeamMember] || {}
+                      : reflectionData;
+                    const managerReviews = Object.values(dataToUse).filter(cat => 
+                      cat && typeof cat === 'object' && cat.managerResponse
+                    ).length;
+                    return managerReviews;
+                  })()}
+                </div>
+                <div className="text-sm font-medium text-purple-700">Manager Reviews</div>
+              </div>
 
-          {/* Average Rating */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
-            <div className="flex justify-center mb-1">
-              {[1, 2, 3, 4, 5].map((star) => {
-                const avgRating = (() => {
-                  const ratings = Object.values(reflectionData)
-                    .map(cat => cat.managerResponse?.rating)
-                    .filter(rating => rating !== undefined) as number[];
-                  return ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0;
-                })();
-                
-                return (
-                  <svg
-                    key={star}
-                    className={`w-4 h-4 ${star <= Math.round(avgRating) ? 'text-yellow-400 fill-current' : 'text-yellow-300'}`}
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                );
-              })}
+              {/* Average Rating */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                <div className="flex justify-center mb-1">
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const avgRating = (() => {
+                      const dataToUse = userRole === 'manager' && selectedTeamMember 
+                        ? teamReflections[selectedTeamMember] || {}
+                        : reflectionData;
+                      const ratings = Object.values(dataToUse)
+                        .map(cat => cat && typeof cat === 'object' ? cat.managerResponse?.rating : undefined)
+                        .filter(rating => rating !== undefined) as number[];
+                      return ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0;
+                    })();
+                    
+                    return (
+                      <svg
+                        key={star}
+                        className={`w-4 h-4 ${star <= Math.round(avgRating) ? 'text-yellow-400 fill-current' : 'text-yellow-300'}`}
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                    );
+                  })}
+                </div>
+                <div className="text-sm font-medium text-yellow-700">
+                  Avg Rating: {(() => {
+                    const dataToUse = userRole === 'manager' && selectedTeamMember 
+                      ? teamReflections[selectedTeamMember] || {}
+                      : reflectionData;
+                    const ratings = Object.values(dataToUse)
+                      .map(cat => cat && typeof cat === 'object' ? cat.managerResponse?.rating : undefined)
+                      .filter(rating => rating !== undefined) as number[];
+                    return ratings.length > 0 ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1) : '0';
+                  })()}
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Show nothing for managers when no team member is selected */
+            <div className="col-span-2 text-center py-8 text-slate-500">
+              <p>Select a team member to view their reflection metrics</p>
             </div>
-            <div className="text-sm font-medium text-yellow-700">
-              Avg Rating: {(() => {
-                const ratings = Object.values(reflectionData)
-                  .map(cat => cat.managerResponse?.rating)
-                  .filter(rating => rating !== undefined) as number[];
-                return ratings.length > 0 ? (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1) : '0';
-              })()}
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

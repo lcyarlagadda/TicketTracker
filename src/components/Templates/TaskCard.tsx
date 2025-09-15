@@ -67,43 +67,50 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
       bg: 'bg-violet-100',
       text: 'text-violet-700',
       border: 'border-violet-200',
-      label: 'Epic'
+      label: 'Epic',
+      gradient: 'from-violet-600 to-violet-800'
     },
     feature: { 
       bg: 'bg-blue-100',
       text: 'text-blue-700',
       border: 'border-blue-200',
-      label: 'Feature'
+      label: 'Feature',
+      gradient: 'from-blue-500 to-cyan-600'
     },
     story: { 
       bg: 'bg-green-100',
       text: 'text-green-700',
       border: 'border-green-200',
-      label: 'Story'
+      label: 'Story',
+      gradient: 'from-green-500 to-emerald-600'
     },
     bug: { 
       bg: 'bg-red-100',
       text: 'text-red-700',
       border: 'border-red-200',
-      label: 'Bug'
+      label: 'Bug',
+      gradient: 'from-red-500 to-rose-600'
     },
     enhancement: { 
       bg: 'bg-orange-100',
       text: 'text-orange-700',
       border: 'border-orange-200',
-      label: 'Enhancement'
+      label: 'Enhancement',
+      gradient: 'from-orange-500 to-amber-600'
     },
     subtask: { 
       bg: 'bg-gray-100',
       text: 'text-gray-700',
       border: 'border-gray-200',
-      label: 'Subtask'
+      label: 'Subtask',
+      gradient: 'from-gray-500 to-slate-600'
     },
     poc: { 
       bg: 'bg-yellow-100',
       text: 'text-yellow-700',
       border: 'border-yellow-200',
-      label: 'POC'
+      label: 'POC',
+      gradient: 'from-yellow-500 to-orange-500'
     },
   };
 
@@ -197,17 +204,17 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
             : 'hover:border-slate-300'
         }`}
       >
-        {/* Colorful top border based on priority */}
-        <div className={`h-1 w-full rounded-t-lg ${config.gradient}`}></div>
+        {/* Colorful top border based on task type */}
+        <div className={`h-1 w-full rounded-t-lg bg-gradient-to-r ${typeConfig.gradient}`}></div>
         
         {/* Drag Handle */}
         <div
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing p-2 mb-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 border border-slate-300 shadow-sm hover:shadow-md"
+          className="cursor-grab active:cursor-grabbing p-1.5 mb-2 bg-slate-50 hover:bg-slate-100 rounded transition-all duration-200 opacity-40 group-hover:opacity-100 border border-slate-200 hover:border-slate-300"
         >
-          <div className="text-xs text-slate-600 flex items-center justify-center">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+          <div className="text-xs text-slate-400 flex items-center justify-center">
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
               <circle cx="3" cy="3" r="1"/>
               <circle cx="9" cy="3" r="1"/>
               <circle cx="3" cy="6" r="1"/>
@@ -326,7 +333,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                   <div>
                     <p className="text-xs text-slate-500">Assigned to</p>
                     <p className="text-xs text-slate-700 font-medium">
-                      {task.assignedTo.name}
+                      {task.assignedTo.name.length > 20
+                        ? `${task.assignedTo.name.slice(0, 20)}...`
+                        : task.assignedTo.name}
                     </p>
                   </div>
                 ) : (

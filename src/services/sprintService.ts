@@ -16,19 +16,21 @@ import {
 } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../firebase';
-import { Sprint, Task } from '../store/types/types';
-import { hasPermission } from '../utils/permissions';
+import { Sprint, Task, Board } from '../store/types/types';
+import { hasPermissionLegacy } from '../utils/permissions';
 
 class SprintService {
   // Create a new sprint
   async createSprint(
     userId: string, 
     boardId: string, 
-    sprintData: Omit<Sprint, 'id'>
+    sprintData: Omit<Sprint, 'id'>,
+    board: Board,
+    userEmail: string
   ): Promise<Sprint> {
     try {
       // Check if user has permission to manage sprints
-      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
       if (!canManage) {
         throw new Error('Access denied: Only managers and admins can create sprints');
       }
@@ -133,14 +135,16 @@ class SprintService {
 
   // Update sprint
   async updateSprint(
-    userId: string,
-    boardId: string,
-    sprintId: string,
-    updates: Partial<Sprint>
+    userId: string, 
+    boardId: string, 
+    sprintId: string, 
+    updates: Partial<Sprint>,
+    board: Board,
+    userEmail: string
   ): Promise<void> {
     try {
       // Check if user has permission to manage sprints
-      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
       if (!canManage) {
         throw new Error('Access denied: Only managers and admins can update sprints');
       }
@@ -154,10 +158,10 @@ class SprintService {
   }
 
   // Delete sprint
-  async deleteSprint(userId: string, boardId: string, sprintId: string): Promise<void> {
+  async deleteSprint(userId: string, boardId: string, sprintId: string, board: Board, userEmail: string): Promise<void> {
     try {
       // Check if user has permission to manage sprints
-      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
       if (!canManage) {
         throw new Error('Access denied: Only managers and admins can delete sprints');
       }
@@ -178,13 +182,15 @@ class SprintService {
     userId: string,
     boardId: string,
     sprintId: string,
-    taskIds: string[]
+    taskIds: string[],
+    board: Board,
+    userEmail: string
   ): Promise<void> {
     try {
-      // Check if user has access to this board
-      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
-      if (!accessDoc.exists()) {
-        throw new Error('Access denied to board');
+      // Check if user has permission to manage sprints
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
+      if (!canManage) {
+        throw new Error('Access denied: Only managers and admins can assign tasks to sprints');
       }
 
       const batch = writeBatch(db);
@@ -291,7 +297,9 @@ class SprintService {
   async completeActiveSprint(
     userId: string,
     boardId: string,
-    sprintId: string
+    sprintId: string,
+    board: Board,
+    userEmail: string
   ): Promise<Sprint> {
     try {
       // Get current sprint data
@@ -330,7 +338,7 @@ class SprintService {
         spilloverStoryPoints
       };
       
-      await this.updateSprint(userId, boardId, sprintId, updates);
+      await this.updateSprint(userId, boardId, sprintId, updates, board, userEmail);
       return await this.fetchSprint(userId, boardId, sprintId);
     } catch (error) {
       // Error('Error completing sprint:', error);

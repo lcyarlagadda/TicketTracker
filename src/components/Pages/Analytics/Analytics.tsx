@@ -11,12 +11,8 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
   Line,
   Area,
-  AreaChart,
-  ScatterChart,
-  Scatter,
   ComposedChart,
 } from "recharts";
 import {
@@ -38,7 +34,6 @@ import {
   Task,
   Board,
   ContributorMetrics,
-  VelocityData,
   EnhancedVelocityData,
   CompletionTrendsData,
 } from "../../../store/types/types";
@@ -61,7 +56,6 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     | "cycle-time"
     | "completion-trends"
   >("velocity");
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Get task points
   const getTaskPoints = (task: Task): number => {
@@ -88,22 +82,41 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       contributorNames: contributors,
       taskAssignees,
       finalContributors,
-      totalTasks: tasks.length
+      totalTasks: tasks.length,
+      sampleTasks: tasks.slice(0, 3).map(t => ({
+        id: t.id,
+        title: t.title,
+        assignedTo: t.assignedTo,
+        status: t.status
+      })),
+      allTaskAssignees: [...new Set(tasks.map(t => t.assignedTo?.name).filter(Boolean))],
+      allCollaboratorNames: board.collaborators?.map(c => c.name) || []
     });
 
-    return finalContributors
+    const result = finalContributors
       .map((contributor) => {
         const contributorTasks = tasks.filter(
           (t) => t.assignedTo?.name === contributor
         );
+        
+        console.log(`Contributor "${contributor}" tasks:`, {
+          totalTasks: contributorTasks.length,
+          tasks: contributorTasks.map(t => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            points: t.points,
+            assignedTo: t.assignedTo
+          }))
+        });
         const completedTasks = contributorTasks.filter(
-          (t) => t.status === "Done" || t.status === "done" || t.status === "completed"
+          (t) => t.status === "done" || t.status === "Done" || t.status === "completed"
         );
         const inProgressTasks = contributorTasks.filter(
-          (t) => t.status === "In Progress" || t.status === "inprogress"
+          (t) => t.status === "inprogress" || t.status === "In Progress"
         );
         const todoTasks = contributorTasks.filter(
-          (t) => t.status === "To Do" || t.status === "todo"
+          (t) => t.status === "todo" || t.status === "To Do"
         );
 
         const pointsCompleted = completedTasks.reduce(
@@ -124,8 +137,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           const startLog = task.progressLog?.find(
             (log) =>
               log.type === "status-change" &&
-              (log.desc.includes("In Progress") ||
-                log.desc.includes("inprogress"))
+              (log.desc.includes("inprogress") ||
+                log.desc.includes("In Progress"))
           );
           const completionLog = task.progressLog?.find(
             (log) =>
@@ -141,8 +154,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 const startLog = task.progressLog?.find(
                   (log) =>
                     log.type === "status-change" &&
-                    (log.desc.includes("In Progress") ||
-                      log.desc.includes("inprogress"))
+                    (log.desc.includes("inprogress") ||
+                      log.desc.includes("In Progress"))
                 );
                 const completionLog = task.progressLog?.find(
                   (log) =>
@@ -177,7 +190,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
             Math.ceil(timeRange === "7d" ? 1 : timeRange === "30d" ? 4 : 12)
           ); // per week
 
-        return {
+        const result = {
           name: contributor,
           taskCount: contributorTasks.length,
           pointsCompleted,
@@ -191,6 +204,9 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           workload,
           velocity: isNaN(velocity) ? 0 : Math.round(velocity * 10) / 10,
         };
+        
+        console.log(`Contributor "${contributor}" final data:`, result);
+        return result;
       })
       .filter(contributor => {
         const hasTasks = contributor.taskCount > 0;
@@ -199,7 +215,15 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         return true; // Show all contributors for debugging
       }) // Temporarily show all contributors for debugging
       .sort((a, b) => b.pointsCompleted - a.pointsCompleted);
-  }, [tasks, timeRange, refreshKey]);
+
+    console.log('Contributor Metrics Result:', {
+      totalContributors: result.length,
+      contributorsWithTasks: result.filter(c => c.taskCount > 0).length,
+      result
+    });
+
+    return result;
+  }, [tasks, timeRange, board.collaborators]);
 
   // Enhanced velocity data with predictions
   const velocityData = useMemo((): EnhancedVelocityData[] => {
@@ -248,20 +272,37 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange, contributorMetrics, refreshKey]);
+  }, [tasks, timeRange, contributorMetrics]);
 
   // Cycle time distribution data
   const cycleTimeData = useMemo(() => {
     const completedTasks = tasks.filter(
-      (t) => t.status === "Done" || t.status === "done"
+      (t) => t.status === "done" || t.status === "Done"
     );
     const cycleTimeMap = new Map();
+
+    console.log('Cycle Time Debug:', {
+      totalTasks: tasks.length,
+      completedTasks: completedTasks.length,
+      completedTaskStatuses: [...new Set(tasks.map(t => t.status))],
+      sampleCompletedTasks: completedTasks.slice(0, 3).map(t => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        progressLog: t.progressLog?.length || 0,
+        progressLogEntries: t.progressLog?.slice(0, 3).map(log => ({
+          type: log.type,
+          desc: log.desc,
+          timestamp: log.timestamp
+        })) || []
+      }))
+    });
 
     completedTasks.forEach((task) => {
       const startLog = task.progressLog?.find(
         (log) =>
           log.type === "status-change" &&
-          (log.desc.includes("In Progress") || log.desc.includes("inprogress"))
+          (log.desc.includes("inprogress") || log.desc.includes("In Progress"))
       );
       const completionLog = task.progressLog?.find(
         (log) =>
@@ -293,12 +334,20 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       }
     });
 
-    return Array.from(cycleTimeMap.entries()).map(([bucket, count]) => ({
+    const result = Array.from(cycleTimeMap.entries()).map(([bucket, count]) => ({
       bucket,
       count,
       percentage: Math.round((count / completedTasks.length) * 100),
     }));
-  }, [tasks, refreshKey]);
+
+    console.log('Cycle Time Result:', {
+      cycleTimeMap: Object.fromEntries(cycleTimeMap),
+      result,
+      completedTasksLength: completedTasks.length
+    });
+
+    return result;
+  }, [tasks]);
 
   // Task completion trends
   const completionTrendsData = useMemo(() => {
@@ -344,7 +393,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange, refreshKey]);
+  }, [tasks, timeRange]);
 
   // Current sprint tasks
   const currentSprintTasks = useMemo(() => {
@@ -365,14 +414,14 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       0
     );
     const completedTasks = currentSprintTasks.filter(
-      (t) => t.status === "Done" || t.status === "done"
+      (t) => t.status === "done" || t.status === "Done"
     );
     const completedPoints = completedTasks.reduce(
       (sum, task) => sum + getTaskPoints(task),
       0
     );
     const inProgressTasks = currentSprintTasks.filter(
-      (t) => t.status === "In Progress" || t.status === "inprogress"
+      (t) => t.status === "inprogress" || t.status === "In Progress"
     );
     const inProgressPoints = inProgressTasks.reduce(
       (sum, task) => sum + getTaskPoints(task),
@@ -442,6 +491,17 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const renderChart = () => {
     switch (activeChart) {
       case "velocity":
+        if (velocityData.length === 0) {
+          return (
+            <div className="flex items-center justify-center h-96 text-slate-500">
+              <div className="text-center">
+                <TrendingUp size={48} className="mx-auto mb-4 text-slate-300" />
+                <p className="text-lg font-medium mb-2">No velocity data available</p>
+                <p className="text-sm">Velocity data will appear once tasks are completed</p>
+              </div>
+            </div>
+          );
+        }
         return (
           <ResponsiveContainer width="100%" height={400}>
             <ComposedChart data={velocityData}>
@@ -477,17 +537,49 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         );
 
       case "contributors":
+        if (contributorMetrics.length === 0) {
+          return (
+            <div className="flex items-center justify-center h-96 text-slate-500">
+              <div className="text-center">
+                <Users size={48} className="mx-auto mb-4 text-slate-300" />
+                <p className="text-lg font-medium mb-2">No contributor data available</p>
+                <p className="text-sm">Contributors will appear here once tasks are assigned</p>
+              </div>
+            </div>
+          );
+        }
+        console.log('Contributors Chart Data:', contributorMetrics);
+        
+        // Check if all values are 0 and add some sample data for testing
+        const hasData = contributorMetrics.some(c => c.pointsCompleted > 0 || c.pointsInProgress > 0 || c.pointsTotal > 0);
+        const chartData = hasData ? contributorMetrics : contributorMetrics.map(c => ({
+          ...c,
+          pointsCompleted: 1,
+          pointsInProgress: 1,
+          pointsTotal: 2
+        }));
+        
+        console.log('Chart Data (with fallback):', chartData);
+        
         return (
           <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={contributorMetrics} layout="horizontal">
+            <BarChart 
+              data={chartData} 
+              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis type="number" stroke="#64748b" fontSize={12} />
-              <YAxis
+              <XAxis 
                 dataKey="name"
-                type="category"
+                stroke="#64748b" 
+                fontSize={12}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
+              <YAxis
                 stroke="#64748b"
                 fontSize={12}
-                width={100}
+                domain={[0, 'dataMax + 1']}
               />
               <Tooltip
                 contentStyle={{
@@ -508,9 +600,9 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
               />
               <Bar
                 dataKey="pointsTotal"
-                fill="#E5E7EB"
+                fill="#6B7280"
                 name="Total"
-                opacity={0.3}
+                opacity={0.4}
               />
               <Bar
                 dataKey="pointsCompleted"
@@ -527,6 +619,17 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         );
 
       case "cycle-time":
+        if (cycleTimeData.length === 0) {
+          return (
+            <div className="flex items-center justify-center h-96 text-slate-500">
+              <div className="text-center">
+                <Clock size={48} className="mx-auto mb-4 text-slate-300" />
+                <p className="text-lg font-medium mb-2">No cycle time data available</p>
+                <p className="text-sm">Cycle time data will appear once tasks are completed</p>
+              </div>
+            </div>
+          );
+        }
         return (
           <ResponsiveContainer width="100%" height={400}>
             <PieChart>
@@ -630,7 +733,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </div>
           <div className="flex flex-col tablet:flex-row gap-2">
             <button
-              onClick={() => setRefreshKey(prev => prev + 1)}
+              onClick={() => window.location.reload()}
               className="flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
               title="Refresh analytics data"
             >
