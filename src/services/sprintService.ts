@@ -16,19 +16,21 @@ import {
 } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../firebase';
-import { Sprint, Task } from '../store/types/types';
-import { hasPermission } from '../utils/permissions';
+import { Sprint, Task, Board } from '../store/types/types';
+import { hasPermissionLegacy } from '../utils/permissions';
 
 class SprintService {
   // Create a new sprint
   async createSprint(
     userId: string, 
     boardId: string, 
-    sprintData: Omit<Sprint, 'id'>
+    sprintData: Omit<Sprint, 'id'>,
+    board: Board,
+    userEmail: string
   ): Promise<Sprint> {
     try {
       // Check if user has permission to manage sprints
-      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
       if (!canManage) {
         throw new Error('Access denied: Only managers and admins can create sprints');
       }
@@ -38,7 +40,7 @@ class SprintService {
       const newSprint = {
         ...sprintData,
         boardId,
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
       };
 
       await setDoc(
@@ -48,7 +50,7 @@ class SprintService {
 
       return { id: sprintId, ...newSprint } as Sprint;
     } catch (error) {
-      console.error('Error creating sprint:', error);
+      // Error('Error creating sprint:', error);
       throw error;
     }
   }
@@ -56,28 +58,28 @@ class SprintService {
   // Fetch all sprints for a board
   async fetchBoardSprints(userId: string, boardId: string): Promise<Sprint[]> {
     try {
-      console.log(`Fetching sprints for user ${userId} and board ${boardId}`);
+      // Fetching sprints for user and board
       
       // Check if user has access to this board
       const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
-      console.log(`Board access exists: ${accessDoc.exists()}`);
+      // Board access checked
       
       if (!accessDoc.exists()) {
         // If no direct access, check if user is the board creator
         const boardDoc = await getDoc(doc(db, 'boards', boardId));
         if (!boardDoc.exists()) {
-          console.log('Board not found');
+          // Board not found
           throw new Error('Board not found');
         }
         const boardData = boardDoc.data();
-        console.log(`Board creator: ${boardData.createdBy.uid}, Current user: ${userId}`);
+        // Board creator checked
         if (boardData.createdBy.uid !== userId) {
-          console.log('Access denied - not board creator');
+          // Access denied - not board creator
           throw new Error('Access denied to board');
         }
-        console.log('Access granted - user is board creator');
+        // Access granted - user is board creator
       } else {
-        console.log('Access granted - user has board access');
+        // Access granted - user has board access
       }
 
       const sprintsQuery = query(
@@ -85,7 +87,7 @@ class SprintService {
         where('boardId', '==', boardId)
       );
       const snapshot = await getDocs(sprintsQuery);
-      console.log(`Found ${snapshot.docs.length} sprints`);
+      // Found sprints
       
       const sprints = snapshot.docs.map(doc => ({ 
         id: doc.id, 
@@ -96,7 +98,7 @@ class SprintService {
       // Sort in memory by sprint number
       return sprints.sort((a, b) => (b.sprintNumber || 0) - (a.sprintNumber || 0));
     } catch (error) {
-      console.error('Error fetching sprints:', error);
+      // Error('Error fetching sprints:', error);
       throw error;
     }
   }
@@ -126,21 +128,23 @@ class SprintService {
       }
       return { id: sprintDoc.id, boardId, ...sprintDoc.data() } as Sprint;
     } catch (error) {
-      console.error('Error fetching sprint:', error);
+      // Error('Error fetching sprint:', error);
       throw error;
     }
   }
 
   // Update sprint
   async updateSprint(
-    userId: string,
-    boardId: string,
-    sprintId: string,
-    updates: Partial<Sprint>
+    userId: string, 
+    boardId: string, 
+    sprintId: string, 
+    updates: Partial<Sprint>,
+    board: Board,
+    userEmail: string
   ): Promise<void> {
     try {
       // Check if user has permission to manage sprints
-      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
       if (!canManage) {
         throw new Error('Access denied: Only managers and admins can update sprints');
       }
@@ -148,16 +152,16 @@ class SprintService {
       const sprintRef = doc(db, 'sprints', sprintId);
       await updateDoc(sprintRef, updates);
     } catch (error) {
-      console.error('Error updating sprint:', error);
+      // Error('Error updating sprint:', error);
       throw error;
     }
   }
 
   // Delete sprint
-  async deleteSprint(userId: string, boardId: string, sprintId: string): Promise<void> {
+  async deleteSprint(userId: string, boardId: string, sprintId: string, board: Board, userEmail: string): Promise<void> {
     try {
       // Check if user has permission to manage sprints
-      const canManage = await hasPermission(boardId, userId, 'canManageSprints');
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
       if (!canManage) {
         throw new Error('Access denied: Only managers and admins can delete sprints');
       }
@@ -168,7 +172,7 @@ class SprintService {
       // Then delete the sprint
       await deleteDoc(doc(db, 'sprints', sprintId));
     } catch (error) {
-      console.error('Error deleting sprint:', error);
+      // Error('Error deleting sprint:', error);
       throw error;
     }
   }
@@ -178,13 +182,15 @@ class SprintService {
     userId: string,
     boardId: string,
     sprintId: string,
-    taskIds: string[]
+    taskIds: string[],
+    board: Board,
+    userEmail: string
   ): Promise<void> {
     try {
-      // Check if user has access to this board
-      const accessDoc = await getDoc(doc(db, 'boardAccess', `${boardId}_${userId}`));
-      if (!accessDoc.exists()) {
-        throw new Error('Access denied to board');
+      // Check if user has permission to manage sprints
+      const canManage = hasPermissionLegacy(board, userEmail, 'canManageSprints');
+      if (!canManage) {
+        throw new Error('Access denied: Only managers and admins can assign tasks to sprints');
       }
 
       const batch = writeBatch(db);
@@ -205,7 +211,7 @@ class SprintService {
       
       await batch.commit();
     } catch (error) {
-      console.error('Error assigning tasks to sprint:', error);
+      // Error('Error assigning tasks to sprint:', error);
       throw error;
     }
   }
@@ -239,7 +245,7 @@ class SprintService {
         await batch.commit();
       }
     } catch (error) {
-      console.error('Error unassigning tasks from sprint:', error);
+      // Error('Error unassigning tasks from sprint:', error);
       throw error;
     }
   }
@@ -268,7 +274,7 @@ class SprintService {
       }
       return tasks;
     } catch (error) {
-      console.error('Error fetching tasks by IDs:', error);
+      // Error('Error fetching tasks by IDs:', error);
       throw error;
     }
   }
@@ -282,7 +288,7 @@ class SprintService {
       const maxSprintNumber = Math.max(...sprints.map(s => s.sprintNumber || 0));
       return maxSprintNumber + 1;
     } catch (error) {
-      console.error('Error getting next sprint number:', error);
+      // Error('Error getting next sprint number:', error);
       return 1;
     }
   }
@@ -291,13 +297,31 @@ class SprintService {
   async completeActiveSprint(
     userId: string,
     boardId: string,
-    sprintId: string
+    sprintId: string,
+    board: Board,
+    userEmail: string
   ): Promise<Sprint> {
     try {
-      // Calculate actual velocity
+      // Get current sprint data
+      const sprint = await this.fetchSprint(userId, boardId, sprintId);
+      
+      // Calculate actual velocity and completion metrics
       const tasks = await this.fetchSprintTasks(userId, boardId, sprintId);
       const completedTasks = tasks.filter(t => t.status === 'done' || t.status === 'Done');
-      const actualVelocity = completedTasks.reduce((sum, task) => sum + (task.points !== null && task.points !== undefined ? task.points : 0), 0);
+      const incompleteTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'Done');
+      
+      // Helper function to get task points
+      const getTaskPoints = (task: any): number => {
+        if (task.points !== null && task.points !== undefined) {
+          return task.points;
+        }
+        return task.priority === "High" ? 8 : task.priority === "Medium" ? 5 : 3;
+      };
+      
+      // Calculate story points metrics
+      const completedStoryPoints = completedTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+      const spilloverStoryPoints = incompleteTasks.reduce((sum, task) => sum + getTaskPoints(task), 0);
+      const initialStoryPoints = sprint.totalStoryPoints || (completedStoryPoints + spilloverStoryPoints);
       
       // Calculate completion rate
       const totalTasks = tasks.length;
@@ -305,15 +329,19 @@ class SprintService {
       
       const updates = {
         status: 'completed' as const,
-        actualVelocity,
+        actualVelocity: completedStoryPoints,
         completionRate: Math.round(completionRate * 10) / 10, // Round to 1 decimal place
-        completedAt: new Date().toISOString() // Use ISO string instead of serverTimestamp()
+        completedAt: new Date().toISOString(),
+        // New completion tracking fields
+        initialStoryPoints,
+        completedStoryPoints,
+        spilloverStoryPoints
       };
       
-      await this.updateSprint(userId, boardId, sprintId, updates);
+      await this.updateSprint(userId, boardId, sprintId, updates, board, userEmail);
       return await this.fetchSprint(userId, boardId, sprintId);
     } catch (error) {
-      console.error('Error completing sprint:', error);
+      // Error('Error completing sprint:', error);
       throw error;
     }
   }
@@ -355,7 +383,7 @@ async fetchSprintTasks(userId: string, boardId: string, sprintId: string): Promi
       return aDate - bDate;
     });
   } catch (error) {
-    console.error('Error fetching sprint tasks:', error);
+    // Error('Error fetching sprint tasks:', error);
     throw error;
   }
 }

@@ -39,17 +39,25 @@ const SprintRouter: React.FC = () => {
       if (!user || !boardId || !sprintNo) return;
       
       setSprintLoading(true);
+      setError(null);
       try {
+        // Fetching sprint data for board
         const sprints = await sprintService.fetchBoardSprints(user.uid, boardId);
-        const targetSprint = sprints.find(s => s.sprintNumber === parseInt(sprintNo));
+        // All sprints fetched
+        
+        const targetSprintNumber = parseInt(sprintNo);
+        const targetSprint = sprints.find(s => s.sprintNumber === targetSprintNumber);
+        
+        // Looking for sprint number
         
         if (!targetSprint) {
           setError(`Sprint ${sprintNo} not found`);
         } else {
           setSprint(targetSprint);
+          // Sprint set successfully
         }
       } catch (error) {
-        console.error('Error fetching sprint data:', error);
+        // Error('Error fetching sprint data:', error);
         setError('Failed to load sprint data');
       } finally {
         setSprintLoading(false);

@@ -33,7 +33,7 @@ const BoardCard: React.FC<BoardCardProps> = ({ board }) => {
         deleteBoard({ userId: user.uid, boardId: board.id })
       ).unwrap();
     } catch (err) {
-      console.error("Failed to delete board:", err);
+      // Error("Failed to delete board:", err);
     } finally {
       setShowConfirm(false);
     }

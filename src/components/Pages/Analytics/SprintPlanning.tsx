@@ -62,7 +62,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
         const boardSprints = await sprintService.fetchBoardSprints(user.uid, boardId);
         setSprints(boardSprints.sort((a, b) => b.sprintNumber - a.sprintNumber));
       } catch (error) {
-        console.error('Error fetching sprints:', error);
+        // Error('Error fetching sprints:', error);
       } finally {
         setLoading(false);
       }
@@ -133,10 +133,10 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
 
   // Sprint actions
   const startSprint = async (sprintId: string) => {
-    if (!user) return;
+    if (!user || !currentBoard) return;
     
     try {
-      await sprintService.updateSprint(user.uid, boardId, sprintId, { status: 'active' });
+      await sprintService.updateSprint(user.uid, boardId, sprintId, { status: 'active' }, currentBoard, user.email || '');
       setSprints(prev => prev.map(s => 
         s.id === sprintId ? { ...s, status: 'active' as const } : 
         s.status === 'active' ? { ...s, status: 'completed' as const } : s
@@ -147,11 +147,14 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   };
 
   const completeSprint = async (sprintId: string) => {
-    if (!user) return;
+    if (!user || !currentBoard) return;
     
     try {
-      const completedSprint = await sprintService.completeActiveSprint(user.uid, boardId, sprintId);
+      const completedSprint = await sprintService.completeActiveSprint(user.uid, boardId, sprintId, currentBoard, user.email || '');
       setSprints(prev => prev.map(s => s.id === sprintId ? completedSprint : s));
+      
+      // Show success message or notification
+      // Sprint completed successfully with metrics
     } catch (error) {
       console.error('Error completing sprint:', error);
     }
@@ -189,14 +192,17 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   };
 
   const navigateToSprintAnalytics = (sprintNumber: number) => {
+    // Navigating to analytics for sprint
     navigate(`/board/${boardId}/${sprintNumber}/analytics`);
   };
 
   const navigateToSprintRetro = (sprintNumber: number) => {
+    // Navigating to retro for sprint
     navigate(`/board/${boardId}/${sprintNumber}/retro`);
   };
 
   const navigateToSprintReflection = (sprintNumber: number) => {
+    // Navigating to reflection for sprint
     navigate(`/board/${boardId}/${sprintNumber}/reflection`);
   };
 
@@ -212,18 +218,18 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 tablet:p-6">
       {/* Header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
+        <div className="flex flex-col tablet:flex-row tablet:items-center tablet:justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Sprint Planning</h2>
-            <p className="text-slate-600">Manage and track all sprints for this board</p>
+            <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">Sprint Planning</h2>
+            <p className="text-sm tablet:text-base text-slate-600">Manage and track all sprints for this board</p>
           </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col tablet:flex-row items-stretch tablet:items-center gap-3">
             <button
               onClick={handleBackToBoard}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors group"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors group"
             >
               <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
               <span className="font-medium">Back to Board</span>
@@ -231,7 +237,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
             {canManageSprints && (
               <button
                 onClick={handleCreateSprint}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Plus size={16} />
                 Create Sprint
@@ -243,14 +249,14 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
         {/* Active Sprint Overview */}
         {activeSprint && (
           <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col tablet:flex-row tablet:items-center tablet:justify-between gap-4 mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-green-800">Active Sprint: {activeSprint.name}</h3>
                 <p className="text-sm text-green-600">
                   {new Date(activeSprint.startDate).toLocaleDateString()} - {new Date(activeSprint.endDate).toLocaleDateString()}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col tablet:flex-row gap-2">
                 {canManageSprints && (
                   <button
                     onClick={() => handleEditSprint(activeSprint)}
@@ -261,7 +267,10 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                   </button>
                 )}
                 <button
-                  onClick={() => navigateToSprintAnalytics(activeSprint.sprintNumber)}
+                  onClick={() => {
+                    // Active sprint analytics button clicked
+                    navigateToSprintAnalytics(activeSprint.sprintNumber);
+                  }}
                   className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                 >
                   <BarChart3 size={14} />
@@ -280,7 +289,7 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-700">{realTimeStoryPoints}</div>
-                <div className="text-sm text-green-600">Story Points</div>
+                <div className="text-sm text-green-600">Current Story Points</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-700">{activeSprint.duration}</div>
@@ -416,21 +425,30 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                     {(sprint.status === 'active' || sprint.status === 'completed') && (
                       <>
                         <button
-                          onClick={() => navigateToSprintAnalytics(sprint.sprintNumber)}
+                          onClick={() => {
+                            // Analytics button clicked for sprint
+                            navigateToSprintAnalytics(sprint.sprintNumber);
+                          }}
                           className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                         >
                           <BarChart3 size={14} />
                           Analytics
                         </button>
                         <button
-                          onClick={() => navigateToSprintRetro(sprint.sprintNumber)}
+                          onClick={() => {
+                            // Retro button clicked for sprint
+                            navigateToSprintRetro(sprint.sprintNumber);
+                          }}
                           className="flex items-center gap-1 px-3 py-1 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm"
                         >
                           <MessageSquare size={14} />
                           Retro
                         </button>
                         <button
-                          onClick={() => navigateToSprintReflection(sprint.sprintNumber)}
+                          onClick={() => {
+                            // Reflection button clicked for sprint
+                            navigateToSprintReflection(sprint.sprintNumber);
+                          }}
                           className="flex items-center gap-1 px-3 py-1 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
                         >
                           <BookOpen size={14} />
@@ -461,10 +479,18 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                 
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-4 text-sm text-slate-600">
                   <div>
-                    <span className="font-medium">Points:</span> {
+                    <span className="font-medium">
+                      {sprint.status === 'completed' ? 'Initial Points:' : 'Current Points:'}
+                    </span> {
                       (() => {
-                        const realTimeData = sprintRealTimeData.find(data => data.sprintId === sprint.id);
-                        return realTimeData ? realTimeData.realTimeStoryPoints : 0;
+                        if (sprint.status === 'completed') {
+                          // For completed sprints, show initial expectations
+                          return sprint.initialStoryPoints || sprint.totalStoryPoints || 0;
+                        } else {
+                          // For active/planning sprints, show current real-time points
+                          const realTimeData = sprintRealTimeData.find(data => data.sprintId === sprint.id);
+                          return realTimeData ? realTimeData.realTimeStoryPoints : 0;
+                        }
                       })()
                     }
                   </div>
@@ -497,6 +523,44 @@ const SprintPlanningWithModal: React.FC<SprintPlanningProps> = ({ boardId }) => 
                     }
                   </div>
                 </div>
+
+                {/* Completion Metrics for Completed Sprints */}
+                {sprint.status === 'completed' && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <h5 className="text-sm font-semibold text-slate-700 mb-2">Sprint Completion Summary</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                      <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                        <div className="text-green-800 font-medium">Initial Expectations</div>
+                        <div className="text-green-600 text-lg font-bold">
+                          {sprint.initialStoryPoints || sprint.totalStoryPoints || 0} pts
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                        <div className="text-blue-800 font-medium">Completed</div>
+                        <div className="text-blue-600 text-lg font-bold">
+                          {sprint.completedStoryPoints || 0} pts
+                        </div>
+                      </div>
+                      <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                        <div className="text-orange-800 font-medium">Spillover</div>
+                        <div className="text-orange-600 text-lg font-bold">
+                          {sprint.spilloverStoryPoints || 0} pts
+                        </div>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                        <div className="text-purple-800 font-medium">Completion Rate</div>
+                        <div className="text-purple-600 text-lg font-bold">
+                          {sprint.completionRate || 0}%
+                        </div>
+                      </div>
+                    </div>
+                    {sprint.completedAt && (
+                      <div className="mt-2 text-xs text-slate-500">
+                        Completed on: {new Date(sprint.completedAt).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {(sprint.goals.length > 0 || ((sprint as any).risks && (sprint as any).risks.length > 0)) && (
                   <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">

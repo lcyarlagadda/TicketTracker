@@ -1,7 +1,8 @@
 // components/Templates/TaskCard.tsx
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Draggable } from '@hello-pangea/dnd';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Pencil, Trash2, UserCircle, Calendar, CheckSquare, Square, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
 import { deleteTask } from '../../store/slices/taskSlice';
@@ -23,6 +24,21 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
   const [childTasks, setChildTasks] = useState<Task[]>([]);
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   const priorityConfig = {
     Low: { 
@@ -50,43 +66,50 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
       bg: 'bg-violet-100',
       text: 'text-violet-700',
       border: 'border-violet-200',
-      label: 'Epic'
+      label: 'Epic',
+      gradient: 'from-violet-600 to-violet-800'
     },
     feature: { 
       bg: 'bg-blue-100',
       text: 'text-blue-700',
       border: 'border-blue-200',
-      label: 'Feature'
+      label: 'Feature',
+      gradient: 'from-blue-500 to-cyan-600'
     },
     story: { 
       bg: 'bg-green-100',
       text: 'text-green-700',
       border: 'border-green-200',
-      label: 'Story'
+      label: 'Story',
+      gradient: 'from-green-500 to-emerald-600'
     },
     bug: { 
       bg: 'bg-red-100',
       text: 'text-red-700',
       border: 'border-red-200',
-      label: 'Bug'
+      label: 'Bug',
+      gradient: 'from-red-500 to-rose-600'
     },
     enhancement: { 
       bg: 'bg-orange-100',
       text: 'text-orange-700',
       border: 'border-orange-200',
-      label: 'Enhancement'
+      label: 'Enhancement',
+      gradient: 'from-orange-500 to-amber-600'
     },
     subtask: { 
       bg: 'bg-gray-100',
       text: 'text-gray-700',
       border: 'border-gray-200',
-      label: 'Subtask'
+      label: 'Subtask',
+      gradient: 'from-gray-500 to-slate-600'
     },
     poc: { 
       bg: 'bg-yellow-100',
       text: 'text-yellow-700',
       border: 'border-yellow-200',
-      label: 'POC'
+      label: 'POC',
+      gradient: 'from-yellow-500 to-orange-500'
     },
   };
 
@@ -127,7 +150,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
         taskId: task.id
       })).unwrap();
     } catch (err) {
-      console.error('Failed to delete task:', err);
+      // Error('Failed to delete task:', err);
     } finally {
       setShowConfirm(false);
     }
@@ -164,82 +187,87 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy task ID:', err);
+      // Error('Failed to copy task ID:', err);
     }
   };
 
-  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done';
 
   return (
     <>
-      <Draggable draggableId={task.id} index={index}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.draggableProps}
-            {...provided.dragHandleProps}
-            className={`group relative bg-white rounded-xl border border-slate-200 shadow-lg hover:shadow-xl cursor-pointer transition-all duration-300 overflow-hidden ${
-              snapshot.isDragging 
-                ? 'rotate-2 scale-105 z-50 shadow-2xl' 
-                : 'hover:scale-[1.02]'
-            }`}
-            style={{
-              ...provided.draggableProps.style,
-              ...(snapshot.isDragging && { 
-                transform: `${provided.draggableProps.style?.transform} rotate(2deg)`,
-                zIndex: 1000 
-              })
-            }}
-            onClick={handleCardClick}
-          >
-            <div className={`h-1 bg-gradient-to-r ${config.gradient}`}></div>
-            
-            <div className="p-4">
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`group bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 p-2 mb-2 ${
+          isDragging 
+            ? 'opacity-30 shadow-lg' 
+            : 'hover:border-slate-300'
+        }`}
+      >
+        {/* Colorful top border based on task type */}
+        <div className={`h-1 w-full rounded-t-lg bg-gradient-to-r ${typeConfig.gradient}`}></div>
+        
+        {/* Drag Handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1.5 mb-2 bg-slate-50 hover:bg-slate-100 rounded transition-all duration-200 opacity-40 group-hover:opacity-100 border border-slate-200 hover:border-slate-300"
+        >
+          <div className="text-xs text-slate-400 flex items-center justify-center">
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
+              <circle cx="3" cy="3" r="1"/>
+              <circle cx="9" cy="3" r="1"/>
+              <circle cx="3" cy="6" r="1"/>
+              <circle cx="9" cy="6" r="1"/>
+              <circle cx="3" cy="9" r="1"/>
+              <circle cx="9" cy="9" r="1"/>
+            </svg>
+          </div>
+        </div>
+        
+        <div onClick={handleCardClick}>
               {/* Header with Task ID and Actions */}
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-2">
+              <div className="flex justify-between items-start mb-1">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={handleCopyTaskId}
-                    className="flex items-center gap-1 px-2 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-mono text-slate-600 transition-colors"
+                    className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-xs font-mono text-slate-600 transition-colors duration-150"
                     title="Copy Task ID"
                   >
-                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {copied ? <Check size={10} /> : <Copy size={10} />}
                     {task.id.slice(-8)}
                   </button>
-                  <div className={`px-2 py-1 rounded-lg ${typeConfig.bg} ${typeConfig.border} border`}>
-                    <span className={`text-xs font-semibold ${typeConfig.text}`}>
-                      {typeConfig.label}
-                    </span>
+                  <div className={`px-1.5 py-0.5 rounded text-xs font-medium ${typeConfig.bg} ${typeConfig.border} border ${typeConfig.text}`}>
+                    {typeConfig.label}
                   </div>
                 </div>
                 
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                   <button
                     onClick={handleEditClick}
-                    className="p-1.5 rounded-lg hover:bg-blue-100 text-slate-400 hover:text-blue-600 transition-colors"
+                    className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors duration-150"
                     title="Edit Task"
                   >
-                    <Pencil size={14} />
+                    <Pencil size={12} />
                   </button>
                   <button
                     onClick={handleDeleteClick}
-                    className="p-1.5 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
+                    className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors duration-150"
                     title="Delete Task"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={12} />
                   </button>
                 </div>
               </div>
 
               {/* Task Title */}
-              <h4 className="font-bold text-slate-800 leading-tight mb-3 group-hover:text-slate-900 transition-colors">
+              <h4 className="font-semibold text-slate-800 leading-tight mb-1 group-hover:text-slate-900 transition-colors text-sm">
                 {task.title}
               </h4>
 
               {childTasks.length > 0 && (
-                <div className="mb-3">
+                <div className="mb-1">
                   <div 
-                    className="flex items-center justify-between p-2 bg-emerald-50 rounded-lg cursor-pointer hover:bg-emerald-100 transition-colors"
+                    className="flex items-center justify-between p-1.5 bg-emerald-50 rounded-md cursor-pointer hover:bg-emerald-100 transition-colors"
                     onClick={handleSubtaskToggle}
                   >
                     <div className="flex items-center gap-2">
@@ -247,14 +275,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                         {showSubtasks ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         <CheckSquare size={14} className="ml-1" />
                       </div>
-                      <span className="text-sm font-medium text-emerald-700">
+                      <span className="text-xs font-medium text-emerald-700">
                         Subtasks ({progress.completed}/{progress.total})
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-16 bg-emerald-200 rounded-full h-1.5">
+                      <div className="w-12 bg-emerald-200 rounded-full h-1">
                         <div 
-                          className="h-1.5 bg-emerald-600 rounded-full transition-all duration-300"
+                          className="h-1 bg-emerald-600 rounded-full transition-all duration-300"
                           style={{ width: `${progress.percentage}%` }}
                         ></div>
                       </div>
@@ -265,9 +293,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                   </div>
 
                   {showSubtasks && (
-                    <div className="mt-2 space-y-1 pl-2">
+                    <div className="mt-1.5 space-y-1 pl-1.5">
                       {childTasks.map((subtask) => (
-                        <div key={subtask.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg">
+                        <div key={subtask.id} className="flex items-center gap-1.5 p-1.5 bg-slate-50 rounded-lg">
                           <div className="text-emerald-500">
                             {subtask.status === 'done' ? (
                               <CheckSquare size={12} />
@@ -298,60 +326,55 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, index, onClick }) => {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 mb-3 p-2 bg-slate-50 rounded-lg">
-                <UserCircle size={16} className="text-slate-500" />
+              <div className="flex items-center gap-2 mb-2 p-1.5 bg-slate-50 rounded-lg">
+                <UserCircle size={14} className="text-slate-500" />
                 {task.assignedTo ? (
                   <div>
                     <p className="text-xs text-slate-500">Assigned to</p>
-                    <p className="text-sm text-slate-700 font-medium">
-                      {task.assignedTo.name}
+                    <p className="text-xs text-slate-700 font-medium">
+                      {task.assignedTo.name.length > 20
+                        ? `${task.assignedTo.name.slice(0, 20)}...`
+                        : task.assignedTo.name}
                     </p>
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500 font-medium">Unassigned</p>
+                  <p className="text-xs text-slate-500 font-medium">Unassigned</p>
                 )}
               </div>
 
-              <div className="flex justify-between items-center mb-3">
-                <div className={`px-2 py-1 rounded-lg ${config.bg} ${config.border} border`}>
-                  <span className={`text-xs font-semibold ${config.text}`}>
-                    {task.priority}
-                  </span>
-                </div>
-                
-                {task.dueDate && (
-                  <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${
-                    isOverdue 
-                      ? 'bg-red-50 border border-red-200 text-red-700' 
-                      : 'bg-blue-50 border border-blue-200 text-blue-700'
-                  }`}>
-                    <Calendar size={12} />
-                    {new Date(task.dueDate).toLocaleDateString()}
-                  </div>
-                )}
-              </div>
               
               {task.epics?.length > 0 && (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-0.5">
                   {task.epics.slice(0, 2).map((epic, idx) => (
                     <span
                       key={idx}
-                      className="text-xs text-purple-600 bg-purple-100 rounded-full px-2 py-1 border border-purple-200"
+                      className="text-xs text-purple-600 bg-purple-100 rounded-full px-1.5 py-0.5 border border-purple-200"
                     >
                       #{epic}
                     </span>
                   ))}
                   {task.epics.length > 2 && (
-                    <span className="text-xs text-slate-500 bg-slate-50 rounded-full px-2 py-1">
+                    <span className="text-xs text-slate-500 bg-slate-50 rounded-full px-1.5 py-0.5">
                       +{task.epics.length - 2}
                     </span>
                   )}
                 </div>
               )}
-            </div>
-          </div>
-        )}
-      </Draggable>
+              
+              {/* Bottom badges for priority and due date */}
+              <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                <div className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text} border ${config.border}`}>
+                  {task.priority}
+                </div>
+                {task.dueDate && (
+                  <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium border border-blue-200">
+                    <Calendar size={10} />
+                    {new Date(task.dueDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                  </div>
+                )}
+              </div>
+        </div>
+      </div>
 
       {showConfirm && createPortal(
         <ConfirmModal

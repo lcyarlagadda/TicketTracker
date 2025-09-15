@@ -44,7 +44,7 @@ export interface Board {
   };
   collaborators: Collaborator[];
   statuses: string[];
-  createdAt: any;
+  createdAt: string;
   retroData?: RetroData;
   reflectionData?: ReflectionData;
   burndownData?: BurndownData; 
@@ -60,7 +60,7 @@ export interface ProgressLogEntry {
         'dueDate-change' | 'epics-change' | 'file-upload' | 'child-task-added' | 'priority-change' | 'title-change' |
         'child-task-deleted' | 'task-updated' | 'child-task-updated' | 'child-task-status-changed' | 'sprint-change'| 'type-change';
   to?: string;
-  timestamp: any;
+  timestamp: string;
   user: string;
 }
 
@@ -83,7 +83,7 @@ export interface Sprint {
   startDate: string;
   endDate: string;
   status: 'planning' | 'active' | 'completed' | 'cancelled';
-  createdAt: any;
+  createdAt: string;
   createdBy: {
     uid: string;
     email: string;
@@ -96,9 +96,13 @@ export interface Sprint {
   burndownData?: SprintBurndownData[];
   taskIds: string[]; // tasks assigned to this sprint
   risks?: string[];
+  // Completion tracking fields
+  initialStoryPoints?: number; // Story points planned at sprint start
+  completedStoryPoints?: number; // Story points actually completed
+  spilloverStoryPoints?: number; // Story points moved to next sprint
+  completionRate?: number; // Percentage of tasks completed
+  completedAt?: string; // When sprint was completed
   teamCapacityPerWeek?: number;
-  completionRate?: number;
-  completedAt?: string;
 }
 
 export interface SprintBurndownData {
@@ -166,7 +170,7 @@ export interface SprintServiceMethods {
 
 export interface Comment {
   text: string;
-  timestamp: any;
+  timestamp: string;
   user: string;
   edited?: boolean;
 }
@@ -189,7 +193,7 @@ export interface Task {
     email: string;
     name: string;
   } | null;
-  createdAt: any;
+  createdAt: string;
   createdBy: {
     uid: string;
     email: string;
@@ -474,7 +478,6 @@ export interface EnhancedReflectionItem {
   id: number;
   content: string;
   category: string;
-  priority: 'Low' | 'Medium' | 'High';
   author: string;
   authorEmail: string;
   createdAt: string;
@@ -495,21 +498,35 @@ export interface SprintReflectionData {
   lastUpdated: string;
 }
 
-// Private reflection data structure for user-manager conversations
+// Simplified reflection data structure for user-manager conversations
+export interface CategoryReflection {
+  userReview?: {
+    id: string;
+    content: string;
+    author: string;
+    authorEmail: string;
+    createdAt: string;
+  };
+  managerResponse?: {
+    id: string;
+    content: string;
+    author: string;
+    authorEmail: string;
+    createdAt: string;
+    rating: number; // 1-5 star rating
+  };
+}
+
 export interface PrivateReflectionData {
   sprintId: string;
   sprintNumber: number;
   userId: string; // The user this reflection belongs to
   userEmail: string;
   userName: string;
-  managerId?: string; // The manager reviewing this reflection
-  managerEmail?: string;
-  managerName?: string;
-  personalGrowth: EnhancedReflectionItem[];
-  teamInsights: EnhancedReflectionItem[];
-  lessonsLearned: EnhancedReflectionItem[];
-  futureGoals: EnhancedReflectionItem[];
-  managerFeedback: EnhancedReflectionItem[]; // Manager's feedback on the reflection
+  personalGrowth: CategoryReflection;
+  teamInsights: CategoryReflection;
+  lessonsLearned: CategoryReflection;
+  futureGoals: CategoryReflection;
   lastUpdated: string;
   isPrivate: boolean; // Always true for private reflections
 }
@@ -517,9 +534,14 @@ export interface PrivateReflectionData {
 export interface NewReflectionForm {
   content: string;
   category: string;
-  priority: 'Low' | 'Medium' | 'High';
   reviewType: 'self' | 'manager';
-  rating: number;
+  rating?: number;
+}
+
+export interface NewCategoryReflectionForm {
+  content: string;
+  category: string;
+  rating?: number; // Only for manager responses
 }
 
 export type TabKey = 'personal' | 'team' | 'lessons' | 'goals' | 'feedback';

@@ -2,6 +2,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Task, TasksState } from '../types/types';
 import { taskService } from '../../services/taskService';
+import { serializeFirebaseData } from '../../utils/serialization';
 
 const initialState: TasksState = {
   tasks: [],
@@ -13,7 +14,8 @@ const initialState: TasksState = {
 export const fetchTasks = createAsyncThunk(
   'tasks/fetchTasks',
   async ({ userId, boardId }: { userId: string; boardId: string }) => {
-    return await taskService.fetchBoardTasks(userId, boardId);
+    const tasks = await taskService.fetchBoardTasks(userId, boardId);
+    return serializeFirebaseData(tasks);
   }
 );
 
@@ -24,7 +26,8 @@ export const createTask = createAsyncThunk(
     boardId: string; 
     taskData: Omit<Task, 'id' | 'boardId'> 
   }) => {
-    return await taskService.createTask(userId, boardId, taskData);
+    const task = await taskService.createTask(userId, boardId, taskData);
+    return serializeFirebaseData(task);
   }
 );
 
@@ -37,7 +40,7 @@ export const updateTask = createAsyncThunk(
     updates: Partial<Task> 
   }) => {
     await taskService.updateTask(userId, boardId, taskId, updates);
-    return { taskId, updates };
+    return { taskId, updates: serializeFirebaseData(updates) };
   }
 );
 
@@ -92,7 +95,9 @@ export const tasksSlice = createSlice({
         state.error = action.error.message || 'Failed to fetch tasks';
       })
       .addCase(createTask.fulfilled, (state, action) => {
-        state.tasks.push(action.payload);
+        // Don't add to Redux state here since useTasksSync will handle it via real-time listener
+        // This prevents duplicates when both createTask action and real-time listener try to add the same task
+        // The real-time listener will pick up the new task from Firebase and update the state
       })
       .addCase(updateTask.fulfilled, (state, action) => {
         const { taskId, updates } = action.payload;

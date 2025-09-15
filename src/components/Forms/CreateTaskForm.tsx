@@ -247,7 +247,7 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
             name: assignedTo
           }
         : null,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
       createdBy: {
         uid: "",
         email: "",
@@ -284,28 +284,22 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
     ? ["subtask"]
     : ["epic", "feature", "story", "bug", "enhancement", "poc"];
 
-  // Sprint options - only show active and planning sprints
-  const sprintOptions = [
-    "Backlog",
-    ...sprints
-      .filter((s) => s.status === "active" || s.status === "planning")
-      .map((s) => ({
-        value: s.id,
-        label: s.name,
-      })),
-  ];
+  // Sprint options - only show active and planning sprints if they exist
+  const activeSprints = sprints.filter((s) => s.status === "active" || s.status === "planning");
+  const sprintOptions = activeSprints.map((s) => ({
+    value: s.id,
+    label: s.name,
+  }));
 
   const getSprintOptionValue = (
-    option: string | { value: string; label: string }
+    option: { value: string; label: string }
   ) => {
-    if (typeof option === "string") return option === "Backlog" ? "" : option;
     return option.value;
   };
 
   const getSprintOptionLabel = (
-    option: string | { value: string; label: string }
+    option: { value: string; label: string }
   ) => {
-    if (typeof option === "string") return option;
     return option.label;
   };
 
@@ -434,34 +428,40 @@ const CreateTaskForm: React.FC<CreateTaskFormProps> = ({
               <Zap size={16} className="inline mr-2" />
               Sprint Assignment
             </label>
-            <div className="h-12 relative z-0">
-              <CustomDropdown
-                options={sprintOptions.map((option) =>
-                  getSprintOptionLabel(option)
-                )}
-                selected={form.sprintName ? form.sprintName : "Backlog"}
-                setSelected={(val) => {
-                  const selectedOption = sprintOptions.find(
-                    (option) => getSprintOptionLabel(option) === val
-                  );
+            {activeSprints.length > 0 ? (
+              <div className="h-12 relative z-0">
+                <CustomDropdown
+                  options={sprintOptions.map((option) =>
+                    getSprintOptionLabel(option)
+                  )}
+                  selected={form.sprintName ? form.sprintName : ""}
+                  setSelected={(val) => {
+                    const selectedOption = sprintOptions.find(
+                      (option) => getSprintOptionLabel(option) === val
+                    );
 
-                  if (selectedOption) {
-                    const sprintId = getSprintOptionValue(selectedOption);
-                    const sprintName = getSprintOptionLabel(selectedOption);
+                    if (selectedOption) {
+                      const sprintId = getSprintOptionValue(selectedOption);
+                      const sprintName = getSprintOptionLabel(selectedOption);
 
-                    setForm((prev) => ({
-                      ...prev,
-                      sprintId,
-                      sprintName,
-                    }));
+                      setForm((prev) => ({
+                        ...prev,
+                        sprintId,
+                        sprintName,
+                      }));
 
-                    validateField("sprintId", sprintId);
-                  }
-                }}
-                placeholder="Select sprint"
-                className="w-full h-full"
-              />
-            </div>
+                      validateField("sprintId", sprintId);
+                    }
+                  }}
+                  placeholder="Select sprint"
+                  className="w-full h-full"
+                />
+              </div>
+            ) : (
+              <div className="h-12 w-full px-3 py-2 bg-slate-100 border-2 border-slate-200 rounded-xl text-slate-500 text-sm flex items-center">
+                No active sprints available
+              </div>
+            )}
             {fieldErrors.sprintId && (
               <p className="text-red-600 text-xs mt-1">
                 {fieldErrors.sprintId}

@@ -15,7 +15,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-200/60 shadow-lg backdrop-blur-sm px-6 py-4 flex items-center justify-between relative">
+    <header className="bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-200/60 shadow-lg backdrop-blur-sm px-4 py-3 flex items-center justify-between relative">
       <div className="absolute inset-0 bg-gradient-to-r from-blue-50/20 to-blue-60/20"></div>
       
       <div 

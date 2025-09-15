@@ -33,11 +33,11 @@ class AuthService {
           // Grant pending board access when user logs in
           await boardService.grantPendingAccessForUser(user.uid, user.email);
         } catch (error) {
-          console.error('Error setting up user:', error);
+          // Error('Error setting up user:', error);
         }
       }
     }, (error) => {
-      console.error('Auth state change error:', error);
+      // Error('Auth state change error:', error);
       // Set user to null and loading to false on error
       store.dispatch(setUser(null));
     });
@@ -56,20 +56,20 @@ class AuthService {
           email: user.email,
           displayName: user.displayName || '',
           emailVerified: user.emailVerified,
-          createdAt: new Date(),
-          lastLoginAt: new Date()
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString()
         });
-        console.log('New user record created:', user.email);
+        // New user record created
       } else {
         // Update existing user record with last login time
         await setDoc(userRef, {
           ...userDoc.data(),
-          lastLoginAt: new Date()
+          lastLoginAt: new Date().toISOString()
         }, { merge: true });
-        console.log('User record updated:', user.email);
+        // User record updated
       }
     } catch (error) {
-      console.error('Error creating/updating user record:', error);
+      // Error('Error creating/updating user record:', error);
       throw error;
     }
   }

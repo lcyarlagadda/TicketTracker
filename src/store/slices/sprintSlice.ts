@@ -2,6 +2,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Sprint } from '../types/types';
 import { sprintService } from '../../services/sprintService';
+import { serializeFirebaseData } from '../../utils/serialization';
 
 interface SprintState {
   sprints: Sprint[];
@@ -20,67 +21,79 @@ const initialState: SprintState = {
 export const fetchSprints = createAsyncThunk(
   'sprints/fetchSprints',
   async ({ userId, boardId }: { userId: string; boardId: string }) => {
-    return await sprintService.fetchBoardSprints(userId, boardId);
+    const sprints = await sprintService.fetchBoardSprints(userId, boardId);
+    return serializeFirebaseData(sprints);
   }
 );
 
 export const createSprint = createAsyncThunk(
   'sprints/createSprint',
-  async ({ userId, boardId, sprintData }: { 
+  async ({ userId, boardId, sprintData, board, userEmail }: { 
     userId: string; 
     boardId: string; 
-    sprintData: Omit<Sprint, 'id'> 
+    sprintData: Omit<Sprint, 'id'>;
+    board: any;
+    userEmail: string;
   }) => {
-    return await sprintService.createSprint(userId, boardId, sprintData);
+    const sprint = await sprintService.createSprint(userId, boardId, sprintData, board, userEmail);
+    return serializeFirebaseData(sprint);
   }
 );
 
 export const updateSprint = createAsyncThunk(
   'sprints/updateSprint',
-  async ({ userId, boardId, sprintId, updates }: { 
+  async ({ userId, boardId, sprintId, updates, board, userEmail }: { 
     userId: string; 
     boardId: string; 
     sprintId: string; 
-    updates: Partial<Sprint> 
+    updates: Partial<Sprint>;
+    board: any;
+    userEmail: string;
   }) => {
-    await sprintService.updateSprint(userId, boardId, sprintId, updates);
-    return { sprintId, updates };
+    await sprintService.updateSprint(userId, boardId, sprintId, updates, board, userEmail);
+    return { sprintId, updates: serializeFirebaseData(updates) };
   }
 );
 
 export const deleteSprint = createAsyncThunk(
   'sprints/deleteSprint',
-  async ({ userId, boardId, sprintId }: { 
+  async ({ userId, boardId, sprintId, board, userEmail }: { 
     userId: string; 
     boardId: string; 
-    sprintId: string 
+    sprintId: string;
+    board: any;
+    userEmail: string;
   }) => {
-    await sprintService.deleteSprint(userId, boardId, sprintId);
+    await sprintService.deleteSprint(userId, boardId, sprintId, board, userEmail);
     return sprintId;
   }
 );
 
 export const assignTasksToSprint = createAsyncThunk(
   'sprints/assignTasksToSprint',
-  async ({ userId, boardId, sprintId, taskIds }: { 
+  async ({ userId, boardId, sprintId, taskIds, board, userEmail }: { 
     userId: string; 
     boardId: string; 
     sprintId: string; 
-    taskIds: string[] 
+    taskIds: string[];
+    board: any;
+    userEmail: string;
   }) => {
-    await sprintService.assignTasksToSprint(userId, boardId, sprintId, taskIds);
+    await sprintService.assignTasksToSprint(userId, boardId, sprintId, taskIds, board, userEmail);
     return { sprintId, taskIds };
   }
 );
 
 export const completeActiveSprint = createAsyncThunk(
   'sprints/completeActiveSprint',
-  async ({ userId, boardId, sprintId }: { 
+  async ({ userId, boardId, sprintId, board, userEmail }: { 
     userId: string; 
     boardId: string; 
-    sprintId: string 
+    sprintId: string;
+    board: any;
+    userEmail: string;
   }) => {
-    return await sprintService.completeActiveSprint(userId, boardId, sprintId);
+    return await sprintService.completeActiveSprint(userId, boardId, sprintId, board, userEmail);
   }
 );
 
@@ -113,7 +126,7 @@ export const sprintSlice = createSlice({
         state.loading = false;
         state.sprints = action.payload;
         // Set current sprint to active one if exists
-        const activeSprint = action.payload.find(s => s.status === 'active');
+        const activeSprint = action.payload.find((s: Sprint) => s.status === 'active');
         if (activeSprint) {
           state.currentSprint = activeSprint;
         }

@@ -1,5 +1,5 @@
 // components/Modals/TaskModal.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   X,
   Calendar,
@@ -26,6 +26,7 @@ import {
   Layers,
   Crown,
   Copy,
+  AtSign,
 } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { useAppDispatch, useAppSelector } from "../../hooks/redux";
@@ -55,6 +56,135 @@ interface TaskModalProps {
   sprints?: Sprint[];
   existingTasks?: Task[];
 }
+
+// Enhanced Comment Input with user tagging
+interface EnhancedCommentInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  users: { id: string; name: string; email: string }[];
+  className?: string;
+}
+
+const EnhancedCommentInput: React.FC<EnhancedCommentInputProps> = ({
+  value,
+  onChange,
+  onSubmit,
+  placeholder,
+  users,
+  className = ""
+}) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [mentionState, setMentionState] = useState({
+    isOpen: false,
+    startIndex: 0,
+    endIndex: 0,
+    query: '',
+    filteredUsers: users
+  });
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    const cursorPosition = e.target.selectionStart || 0;
+    
+    onChange(newValue);
+    
+    // Check for @ mentions
+    const beforeCursor = newValue.slice(0, cursorPosition);
+    const mentionMatch = beforeCursor.match(/@(\w*)$/);
+    
+    if (mentionMatch) {
+      const query = mentionMatch[1];
+      const startIndex = cursorPosition - mentionMatch[0].length;
+      
+      setMentionState({
+        isOpen: true,
+        startIndex,
+        endIndex: cursorPosition,
+        query,
+        filteredUsers: users.filter(user => 
+          user.name.toLowerCase().includes(query.toLowerCase()) ||
+          user.email.toLowerCase().includes(query.toLowerCase())
+        )
+      });
+    } else {
+      setMentionState(prev => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !mentionState.isOpen) {
+      onSubmit();
+    } else if (e.key === 'Escape') {
+      setMentionState(prev => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  const handleUserMentionSelect = (user: { id: string; name: string }) => {
+    const beforeMention = value.slice(0, mentionState.startIndex);
+    const afterCursor = value.slice(inputRef.current?.selectionStart || 0);
+    const mentionText = `@${user.name}`;
+    
+    const newValue = beforeMention + mentionText + ' ' + afterCursor;
+    onChange(newValue);
+    setMentionState(prev => ({ ...prev, isOpen: false }));
+    
+    // Focus back to input
+    setTimeout(() => {
+      if (inputRef.current) {
+        const newCursorPosition = beforeMention.length + mentionText.length + 1;
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+      }
+    }, 0);
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyPress}
+        placeholder={placeholder}
+        className={className}
+      />
+      
+      {/* Mention Dropdown */}
+      {mentionState.isOpen && mentionState.filteredUsers.length > 0 && (
+        <div className="absolute z-50 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          <div className="p-2">
+            <div className="text-xs text-slate-500 mb-2 flex items-center gap-1">
+              <AtSign size={12} />
+              Mention someone
+            </div>
+            {mentionState.filteredUsers.map((user) => (
+              <button
+                key={user.id}
+                onClick={() => handleUserMentionSelect(user)}
+                className="w-full text-left p-2 hover:bg-slate-50 rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">
+                      {user.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-slate-800">{user.name}</div>
+                    <div className="text-xs text-slate-500">{user.email}</div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
 const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], existingTasks = [] }) => {
   const dispatch = useAppDispatch();
@@ -153,18 +283,48 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
 
   const collaborators = currentBoard?.collaborators || [];
 
+  // Prepare users for mention functionality
+  const mentionUsers = collaborators.map(collab => ({
+    id: collab.email,
+    name: collab.name,
+    email: collab.email
+  }));
+
+  // Function to render mentions in comment text
+  const renderCommentWithMentions = (text: string) => {
+    const mentionRegex = /@(\w+)/g;
+    const parts = text.split(mentionRegex);
+    
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        // This is a mention
+        const mentionedUser = mentionUsers.find(user => user.name === part);
+        if (mentionedUser) {
+          return (
+            <span
+              key={index}
+              className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium"
+            >
+              <AtSign size={10} />
+              {part}
+            </span>
+          );
+        }
+        return <span key={index} className="text-blue-600 font-medium">@{part}</span>;
+      }
+      return part;
+    });
+  };
+
   // Get current sprint info
   const currentSprint = sprintId ? sprints.find(s => s.id === sprintId) : null;
   const activeSprints = sprints.filter(s => s.status === 'active' || s.status === 'planning');
 
-  // Sprint options
-  const sprintOptions = [
-    { value: "", label: "Backlog" },
-    ...activeSprints.map(s => ({
-      value: s.id,
-      label: `${s.name}`
-    }))
-  ];
+  // Sprint options - only show active sprints if they exist
+  const sprintOptions = activeSprints.map(s => ({
+    value: s.id,
+    label: `${s.name}`
+  }));
 
   const taskTypeConfig = {
     epic: { 
@@ -204,9 +364,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       label: 'Subtask'
     },
     poc: { 
-      bg: 'bg-purple-100',
-      text: 'text-purple-700',
-      border: 'border-purple-200',
+      bg: 'bg-yellow-100',
+      text: 'text-yellow-700',
+      border: 'border-yellow-200',
       label: 'POC'
     },
   };
@@ -228,7 +388,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy task ID:', err);
+      // Error('Failed to copy task ID:', err);
     }
   };
 
@@ -325,8 +485,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         progressLog: [
           {
             type: "created" as const,
-            desc: "Subtask created",
-            timestamp: Timestamp.now(),
+            desc: `Subtask ${newChildTask.title.trim()} added`,
+            timestamp: new Date().toISOString(),
             user: user.displayName || user.email,
           },
         ],
@@ -335,7 +495,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
           email: user.email,
           name: user.displayName || user.email,
         },
-        createdAt: Timestamp.now(),
+        createdAt: new Date().toISOString(),
         boardId: currentBoard.id,
       };
 
@@ -356,7 +516,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       });
       setShowAddChildTask(false);
     } catch (error) {
-      console.error("Error adding child task:", error);
+      // Error("Error adding child task:", error);
       setErrorMessage("Failed to create subtask. Please try again.");
     }
   };
@@ -375,7 +535,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         })
       ).unwrap();
     } catch (error) {
-      console.error("Error toggling child task:", error);
+      // Error("Error toggling child task:", error);
       setErrorMessage("Failed to update subtask status. Please try again.");
     }
   };
@@ -392,7 +552,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         })
       ).unwrap();
     } catch (error) {
-      console.error("Error deleting child task:", error);
+      // Error("Error deleting child task:", error);
       setErrorMessage("Failed to delete subtask. Please try again.");
     }
   };
@@ -447,7 +607,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         priority: "Medium",
       });
     } catch (error) {
-      console.error("Error updating child task:", error);
+      // Error("Error updating child task:", error);
       setErrorMessage("Failed to update subtask. Please try again.");
     }
   };
@@ -471,7 +631,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "title-change" as const,
           desc: `Title changed from "${task.title}" to "${title.trim()}"`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -482,7 +642,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "type-change" as const,
           desc: `Task type changed from ${task.type} to ${taskType}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -493,7 +653,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "priority-change" as const,
           desc: `Priority changed from ${task.priority} to ${priority}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -511,7 +671,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "points-change" as const,
           desc: `Story points changed from ${task.points || 'not set'} to ${points || 'not set'}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -529,7 +689,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "sprint-change" as const,
           desc: `Task moved from ${oldSprintName} to ${newSprintName}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -540,7 +700,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "description-change" as const,
           desc: "Task description updated",
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -559,10 +719,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         
         newLogEntries.push({
           type: "assignment-change" as const,
-          desc: `Reassigned from ${task.assignedTo?.name || "Unassigned"} to ${
+          desc: `Assigned from ${task.assignedTo?.name || "Unassigned"} to ${
             assignedTo || "Unassigned"
           }`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -572,7 +732,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "dueDate-change" as const,
           desc: `Due date updated to ${dueDate || "No date"}`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -585,7 +745,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "epics-change" as const,
           desc: "Epics updated",
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -601,7 +761,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
         newLogEntries.push({
           type: "file-upload" as const,
           desc: `${files.length} file(s) uploaded`,
-          timestamp: Timestamp.now(),
+          timestamp: new Date().toISOString(),
           user: user.displayName || user.email,
         });
       }
@@ -640,9 +800,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
               boardUrl,
               taskId: task.id,
             });
-            console.log('Task assignment notification sent successfully');
+            // Task assignment notification sent successfully
           } catch (notificationError) {
-            console.error('Failed to send task assignment notification:', notificationError);
+            // Error('Failed to send task assignment notification:', notificationError);
             // Don't show error to user as the task was still updated successfully
           }
         }
@@ -653,7 +813,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
       setIsVisible(false);
       setTimeout(() => onClose(), 200);
     } catch (error) {
-      console.error("Error saving task:", error);
+      // Error("Error saving task:", error);
       setErrorMessage("Failed to save changes. Please try again.");
     }
   };
@@ -663,7 +823,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
 
     const newComment: Comment = {
       text: commentText,
-      timestamp: Timestamp.now(),
+      timestamp: new Date().toISOString(),
       user: user?.displayName || user?.email || "Unknown",
     };
 
@@ -810,7 +970,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
                 </span>
                 <span className="flex items-center gap-2">
                   <Clock size={14} />
-                  {task.createdAt?.toDate?.()?.toLocaleDateString?.() || "N/A"}
+                  {(task.createdAt as any)?.toDate?.()?.toLocaleDateString?.() || 
+                    (typeof task.createdAt === 'string' ? new Date(task.createdAt).toLocaleDateString() : "N/A")}
                 </span>
                 {childTasks.length > 0 && (
                   <span className="flex items-center gap-2">
@@ -912,19 +1073,25 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
               </div>
               <h3 className="font-semibold text-slate-800">Sprint Assignment</h3>
             </div>
-            <CustomDropdown
-              options={sprintOptions.map(opt => opt.label)}
-              selected={sprintId 
-                ? sprintOptions.find(opt => opt.value === sprintId)?.label || ""
-                : "Backlog"
-              }
-              setSelected={(label) => {
-                const option = sprintOptions.find(opt => opt.label === label);
-                setSprintId(option?.value || "");
-              }}
-              placeholder="Select sprint"
-              className="w-full"
-            />
+            {activeSprints.length > 0 ? (
+              <CustomDropdown
+                options={sprintOptions.map(opt => opt.label)}
+                selected={sprintId 
+                  ? sprintOptions.find(opt => opt.value === sprintId)?.label || ""
+                  : ""
+                }
+                setSelected={(label) => {
+                  const option = sprintOptions.find(opt => opt.label === label);
+                  setSprintId(option?.value || "");
+                }}
+                placeholder="Select sprint"
+                className="w-full"
+              />
+            ) : (
+              <div className="w-full px-3 py-2 bg-slate-100 border-2 border-slate-200 rounded-xl text-slate-500 text-sm">
+                No active sprints available
+              </div>
+            )}
           </div>
 
           {/* Assignment and Due Date */}
@@ -1466,7 +1633,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
                         </p>
                         <div className="text-xs text-slate-500 mt-1">
                           {log.user || "System"} • {" "}
-                          {log.timestamp?.toDate?.()?.toLocaleString?.() || ""}
+                          {(log.timestamp as any)?.toDate?.()?.toLocaleString?.() || 
+                            (typeof log.timestamp === 'string' ? new Date(log.timestamp).toLocaleString() : "")}
                         </div>
                       </div>
                     </div>
@@ -1536,7 +1704,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
                                 {comment.user}
                               </p>
                               <p className="text-xs text-slate-500">
-                                {comment.timestamp?.toDate?.()?.toLocaleString() || "Unknown time"}
+                                {(comment.timestamp as any)?.toDate?.()?.toLocaleString() || 
+                                  (typeof comment.timestamp === 'string' ? new Date(comment.timestamp).toLocaleString() : "Unknown time")}
                                 {comment.edited && (
                                   <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
                                     Edited
@@ -1569,7 +1738,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
 
                       <div className="ml-11">
                         <p className="text-sm text-slate-700 leading-relaxed bg-white p-3 rounded-lg border border-slate-200">
-                          {comment.text}
+                          {renderCommentWithMentions(comment.text)}
                         </p>
                       </div>
                     </>
@@ -1592,7 +1761,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
             </div>
 
             {/* Add Comment Form */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 relative">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-xs font-bold">
                   {user?.displayName?.charAt(0)?.toUpperCase() ||
@@ -1600,18 +1769,16 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, sprints = [], exis
                     "U"}
                 </span>
               </div>
-              <input
-                type="text"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Add a comment..."
-                className="flex-1 p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleAddComment();
-                  }
-                }}
-              />
+              <div className="flex-1 relative">
+                <EnhancedCommentInput
+                  value={commentText}
+                  onChange={setCommentText}
+                  onSubmit={handleAddComment}
+                  placeholder="Add a comment... Use @ to mention someone"
+                  users={mentionUsers}
+                  className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+                />
+              </div>
               <button
                 onClick={handleAddComment}
                 disabled={!commentText.trim()}

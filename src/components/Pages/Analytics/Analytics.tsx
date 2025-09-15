@@ -11,12 +11,8 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
   Line,
   Area,
-  AreaChart,
-  ScatterChart,
-  Scatter,
   ComposedChart,
 } from "recharts";
 import {
@@ -38,7 +34,6 @@ import {
   Task,
   Board,
   ContributorMetrics,
-  VelocityData,
   EnhancedVelocityData,
   CompletionTrendsData,
 } from "../../../store/types/types";
@@ -61,7 +56,6 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     | "cycle-time"
     | "completion-trends"
   >("velocity");
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Get task points
   const getTaskPoints = (task: Task): number => {
@@ -76,21 +70,27 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
   // Calculate contributor metrics with enhanced data
   const contributorMetrics = useMemo((): ContributorMetrics[] => {
     // Use all board collaborators instead of just task assignees
-    const contributors = board.collaborators.map(collab => collab.name);
+    const contributors = board.collaborators?.map(collab => collab.name) || [];
+    
+    // Fallback: if no collaborators, use task assignees
+    const taskAssignees = [...new Set(tasks.map(t => t.assignedTo?.name).filter(Boolean))] as string[];
+    const finalContributors = contributors.length > 0 ? contributors : taskAssignees;
+    
 
-    return contributors
+    const result = finalContributors
       .map((contributor) => {
         const contributorTasks = tasks.filter(
           (t) => t.assignedTo?.name === contributor
         );
+        
         const completedTasks = contributorTasks.filter(
-          (t) => t.status === "Done" || t.status === "done"
+          (t) => t.status === "done" || t.status === "Done" || t.status === "completed"
         );
         const inProgressTasks = contributorTasks.filter(
-          (t) => t.status === "In Progress" || t.status === "inprogress"
+          (t) => t.status === "inprogress" || t.status === "In Progress"
         );
         const todoTasks = contributorTasks.filter(
-          (t) => t.status === "To Do" || t.status === "todo"
+          (t) => t.status === "todo" || t.status === "To Do"
         );
 
         const pointsCompleted = completedTasks.reduce(
@@ -111,8 +111,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           const startLog = task.progressLog?.find(
             (log) =>
               log.type === "status-change" &&
-              (log.desc.includes("In Progress") ||
-                log.desc.includes("inprogress"))
+              (log.desc.includes("inprogress") ||
+                log.desc.includes("In Progress"))
           );
           const completionLog = task.progressLog?.find(
             (log) =>
@@ -128,8 +128,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 const startLog = task.progressLog?.find(
                   (log) =>
                     log.type === "status-change" &&
-                    (log.desc.includes("In Progress") ||
-                      log.desc.includes("inprogress"))
+                    (log.desc.includes("inprogress") ||
+                      log.desc.includes("In Progress"))
                 );
                 const completionLog = task.progressLog?.find(
                   (log) =>
@@ -137,17 +137,16 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     (log.desc.includes("done") || log.desc.includes("Done"))
                 );
                 if (startLog && completionLog) {
-                  const startDate =
-                    startLog.timestamp?.toDate?.() || new Date();
-                  const endDate =
-                    completionLog.timestamp?.toDate?.() || new Date();
-                  return (
-                    sum +
-                    Math.ceil(
-                      (endDate.getTime() - startDate.getTime()) /
-                        (1000 * 60 * 60 * 24)
-                    )
+                  const startDate = (startLog.timestamp as any)?.toDate?.() || 
+                    (typeof startLog.timestamp === 'string' ? new Date(startLog.timestamp) : new Date());
+                  const endDate = (completionLog.timestamp as any)?.toDate?.() || 
+                    (typeof completionLog.timestamp === 'string' ? new Date(completionLog.timestamp) : new Date());
+                  const cycleTime = Math.ceil(
+                    (endDate.getTime() - startDate.getTime()) /
+                      (1000 * 60 * 60 * 24)
                   );
+                  // Ensure cycle time is not negative or NaN
+                  return sum + (cycleTime > 0 ? cycleTime : 0);
                 }
                 return sum;
               }, 0) / tasksWithCycleTime.length
@@ -165,7 +164,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
             Math.ceil(timeRange === "7d" ? 1 : timeRange === "30d" ? 4 : 12)
           ); // per week
 
-        return {
+        const result = {
           name: contributor,
           taskCount: contributorTasks.length,
           pointsCompleted,
@@ -174,14 +173,21 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
           completedTasks: completedTasks.length,
           inProgressTasks: inProgressTasks.length,
           todoTasks: todoTasks.length,
-          averageCycleTime: Math.round(avgCycleTime * 10) / 10,
-          efficiency: Math.round(efficiency),
+          averageCycleTime: isNaN(avgCycleTime) ? 0 : Math.round(avgCycleTime * 10) / 10,
+          efficiency: isNaN(efficiency) ? 0 : Math.round(efficiency),
           workload,
-          velocity: Math.round(velocity * 10) / 10,
+          velocity: isNaN(velocity) ? 0 : Math.round(velocity * 10) / 10,
         };
+        
+        return result;
+      })
+      .filter(contributor => {
+        return contributor.taskCount > 0;
       })
       .sort((a, b) => b.pointsCompleted - a.pointsCompleted);
-  }, [tasks, timeRange, refreshKey]);
+
+    return result;
+  }, [tasks, timeRange, board.collaborators]);
 
   // Enhanced velocity data with predictions
   const velocityData = useMemo((): EnhancedVelocityData[] => {
@@ -201,7 +207,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
             log.type === "status-change" &&
             (log.desc.includes("done") || log.desc.includes("Done"))
         );
-        const completedDate = completionLog?.timestamp?.toDate?.();
+        const completedDate = (completionLog?.timestamp as any)?.toDate?.() || 
+          (typeof completionLog?.timestamp === 'string' ? new Date(completionLog.timestamp) : null);
         return (
           completedDate &&
           completedDate >= startDate &&
@@ -229,20 +236,21 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange, contributorMetrics, refreshKey]);
+  }, [tasks, timeRange, contributorMetrics]);
 
   // Cycle time distribution data
   const cycleTimeData = useMemo(() => {
     const completedTasks = tasks.filter(
-      (t) => t.status === "Done" || t.status === "done"
+      (t) => t.status === "done" || t.status === "Done"
     );
     const cycleTimeMap = new Map();
+
 
     completedTasks.forEach((task) => {
       const startLog = task.progressLog?.find(
         (log) =>
           log.type === "status-change" &&
-          (log.desc.includes("In Progress") || log.desc.includes("inprogress"))
+          (log.desc.includes("inprogress") || log.desc.includes("In Progress"))
       );
       const completionLog = task.progressLog?.find(
         (log) =>
@@ -251,8 +259,10 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       );
 
       if (startLog && completionLog) {
-        const startDate = startLog.timestamp?.toDate?.() || new Date();
-        const endDate = completionLog.timestamp?.toDate?.() || new Date();
+        const startDate = (startLog.timestamp as any)?.toDate?.() || 
+          (typeof startLog.timestamp === 'string' ? new Date(startLog.timestamp) : new Date());
+        const endDate = (completionLog.timestamp as any)?.toDate?.() || 
+          (typeof completionLog.timestamp === 'string' ? new Date(completionLog.timestamp) : new Date());
         const days = Math.ceil(
           (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
         );
@@ -272,12 +282,14 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       }
     });
 
-    return Array.from(cycleTimeMap.entries()).map(([bucket, count]) => ({
+    const result = Array.from(cycleTimeMap.entries()).map(([bucket, count]) => ({
       bucket,
       count,
       percentage: Math.round((count / completedTasks.length) * 100),
     }));
-  }, [tasks, refreshKey]);
+
+    return result;
+  }, [tasks]);
 
   // Task completion trends
   const completionTrendsData = useMemo(() => {
@@ -290,8 +302,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       const dateStr = date.toISOString().split("T")[0];
 
       const dayTasks = tasks.filter((task) => {
-        const createdDate =
-          task.createdAt?.toDate?.() || new Date(task.createdAt);
+        const createdDate = (task.createdAt as any)?.toDate?.() || 
+          (typeof task.createdAt === 'string' ? new Date(task.createdAt) : new Date());
         return createdDate.toISOString().split("T")[0] === dateStr;
       });
 
@@ -301,7 +313,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
             log.type === "status-change" &&
             (log.desc.includes("done") || log.desc.includes("Done"))
         );
-        const completedDate = completionLog?.timestamp?.toDate?.();
+        const completedDate = (completionLog?.timestamp as any)?.toDate?.() || 
+          (typeof completionLog?.timestamp === 'string' ? new Date(completionLog.timestamp) : null);
         return (
           completedDate && completedDate.toISOString().split("T")[0] === dateStr
         );
@@ -322,7 +335,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     }
 
     return data;
-  }, [tasks, timeRange, refreshKey]);
+  }, [tasks, timeRange]);
 
   // Current sprint tasks
   const currentSprintTasks = useMemo(() => {
@@ -330,8 +343,8 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     return tasks.filter((task) => {
-      const createdDate =
-        task.createdAt?.toDate?.() || new Date(task.createdAt);
+      const createdDate = (task.createdAt as any)?.toDate?.() || 
+        (typeof task.createdAt === 'string' ? new Date(task.createdAt) : new Date());
       return createdDate >= thirtyDaysAgo;
     });
   }, [tasks]);
@@ -343,14 +356,14 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
       0
     );
     const completedTasks = currentSprintTasks.filter(
-      (t) => t.status === "Done" || t.status === "done"
+      (t) => t.status === "done" || t.status === "Done"
     );
     const completedPoints = completedTasks.reduce(
       (sum, task) => sum + getTaskPoints(task),
       0
     );
     const inProgressTasks = currentSprintTasks.filter(
-      (t) => t.status === "In Progress" || t.status === "inprogress"
+      (t) => t.status === "inprogress" || t.status === "In Progress"
     );
     const inProgressPoints = inProgressTasks.reduce(
       (sum, task) => sum + getTaskPoints(task),
@@ -366,7 +379,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const projectedCompletion =
       avgVelocity > 0
         ? Math.ceil((totalPoints - completedPoints) / avgVelocity)
-        : 0;
+        : totalPoints > completedPoints ? 999 : 0; // Use 999 as "unknown" instead of Infinity
 
     const avgCycleTime =
       contributorMetrics.length > 0
@@ -390,11 +403,11 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         totalPoints > 0
           ? ((completedPoints / totalPoints) * 100).toFixed(1)
           : "0",
-      avgVelocity: Math.round(avgVelocity * 10) / 10,
-      projectedCompletion,
+      avgVelocity: isNaN(avgVelocity) ? 0 : Math.round(avgVelocity * 10) / 10,
+      projectedCompletion: isNaN(projectedCompletion) || !isFinite(projectedCompletion) ? 0 : projectedCompletion,
       remainingPoints: totalPoints - completedPoints,
-      avgCycleTime: Math.round(avgCycleTime * 10) / 10,
-      teamEfficiency: Math.round(teamEfficiency),
+      avgCycleTime: isNaN(avgCycleTime) ? 0 : Math.round(avgCycleTime * 10) / 10,
+      teamEfficiency: isNaN(teamEfficiency) ? 0 : Math.round(teamEfficiency),
       predictedVelocity:
         velocityData.length >= 3
           ? Math.round(
@@ -402,7 +415,7 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 3) *
                 10
             ) / 10
-          : avgVelocity,
+          : isNaN(avgVelocity) ? 0 : avgVelocity,
     };
   }, [currentSprintTasks, velocityData, contributorMetrics]);
 
@@ -420,6 +433,17 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const renderChart = () => {
     switch (activeChart) {
       case "velocity":
+        if (velocityData.length === 0) {
+          return (
+            <div className="flex items-center justify-center h-96 text-slate-500">
+              <div className="text-center">
+                <TrendingUp size={48} className="mx-auto mb-4 text-slate-300" />
+                <p className="text-lg font-medium mb-2">No velocity data available</p>
+                <p className="text-sm">Velocity data will appear once tasks are completed</p>
+              </div>
+            </div>
+          );
+        }
         return (
           <ResponsiveContainer width="100%" height={400}>
             <ComposedChart data={velocityData}>
@@ -455,17 +479,37 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         );
 
       case "contributors":
+        if (contributorMetrics.length === 0) {
+          return (
+            <div className="flex items-center justify-center h-96 text-slate-500">
+              <div className="text-center">
+                <Users size={48} className="mx-auto mb-4 text-slate-300" />
+                <p className="text-lg font-medium mb-2">No contributor data available</p>
+                <p className="text-sm">Contributors will appear here once tasks are assigned</p>
+              </div>
+            </div>
+          );
+        }
+        
         return (
           <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={contributorMetrics} layout="horizontal">
+            <BarChart 
+              data={contributorMetrics} 
+              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis type="number" stroke="#64748b" fontSize={12} />
-              <YAxis
+              <XAxis 
                 dataKey="name"
-                type="category"
+                stroke="#64748b" 
+                fontSize={12}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
+              <YAxis
                 stroke="#64748b"
                 fontSize={12}
-                width={100}
+                domain={[0, 'dataMax + 1']}
               />
               <Tooltip
                 contentStyle={{
@@ -479,29 +523,43 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     ? "Completed Points"
                     : name === "pointsInProgress"
                     ? "In Progress Points"
-                    : name === "velocity"
-                    ? "Velocity (pts/week)"
+                    : name === "pointsTotal"
+                    ? "Total Points"
                     : name,
                 ]}
               />
               <Bar
+                dataKey="pointsTotal"
+                fill="#6B7280"
+                name="Total"
+                opacity={0.4}
+              />
+              <Bar
                 dataKey="pointsCompleted"
-                stackId="a"
                 fill="#10B981"
                 name="Completed"
               />
               <Bar
                 dataKey="pointsInProgress"
-                stackId="a"
                 fill="#F59E0B"
                 name="In Progress"
               />
-              <Bar dataKey="velocity" fill="#3B82F6" name="Velocity" />
             </BarChart>
           </ResponsiveContainer>
         );
 
       case "cycle-time":
+        if (cycleTimeData.length === 0) {
+          return (
+            <div className="flex items-center justify-center h-96 text-slate-500">
+              <div className="text-center">
+                <Clock size={48} className="mx-auto mb-4 text-slate-300" />
+                <p className="text-lg font-medium mb-2">No cycle time data available</p>
+                <p className="text-sm">Cycle time data will appear once tasks are completed</p>
+              </div>
+            </div>
+          );
+        }
         return (
           <ResponsiveContainer width="100%" height={400}>
             <PieChart>
@@ -590,50 +648,52 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 tablet:p-6">
       {/* Enhanced Header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 tablet:p-6">
+        <div className="flex flex-col tablet:flex-row tablet:items-center tablet:justify-between gap-4 mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">
+            <h2 className="text-xl tablet:text-2xl font-bold text-slate-800">
               Sprint Analytics Dashboard
             </h2>
-            <p className="text-slate-600">
+            <p className="text-sm tablet:text-base text-slate-600">
               Comprehensive insights into team velocity, performance, and
               delivery metrics
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col tablet:flex-row gap-2">
             <button
-              onClick={() => setRefreshKey(prev => prev + 1)}
-              className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+              onClick={() => window.location.reload()}
+              className="flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
               title="Refresh analytics data"
             >
               <RefreshCw size={14} />
               Refresh
             </button>
-            {(["7d", "30d", "90d"] as const).map((range) => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  timeRange === range
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-200 text-slate-600 hover:bg-slate-300"
-                }`}
-              >
-                {range === "7d"
-                  ? "7 Days"
-                  : range === "30d"
-                  ? "30 Days"
-                  : "90 Days"}
-              </button>
-            ))}
+            <div className="flex gap-2">
+              {(["7d", "30d", "90d"] as const).map((range) => (
+                <button
+                  key={range}
+                  onClick={() => setTimeRange(range)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    timeRange === range
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-200 text-slate-600 hover:bg-slate-300"
+                  }`}
+                >
+                  {range === "7d"
+                    ? "7 Days"
+                    : range === "30d"
+                    ? "30 Days"
+                    : "90 Days"}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Enhanced Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 tablet:grid-cols-2 laptop:grid-cols-3 desktop:grid-cols-6 gap-4">
           <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
             <div className="flex items-center gap-3">
               <Target size={20} className="text-blue-600" />
@@ -858,11 +918,11 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <div className="flex items-center gap-2 mb-6">
           <Users size={20} className="text-blue-600" />
           <h3 className="text-lg font-semibold text-slate-800">
-            Team Members ({board.collaborators.length})
+            Team Members ({board.collaborators?.length || 0})
           </h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {board.collaborators.map((collaborator, index) => {
+          {(board.collaborators || []).map((collaborator, index) => {
             const contributorData = contributorMetrics.find(c => c.name === collaborator.name);
             const hasTasks = contributorData && contributorData.taskCount > 0;
             
@@ -893,14 +953,26 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   </div>
                 </div>
                 {hasTasks ? (
-                  <div className="text-sm text-slate-600">
+                  <div className="text-sm text-slate-600 space-y-1">
                     <div className="flex justify-between">
                       <span>Tasks:</span>
                       <span className="font-medium">{contributorData?.taskCount}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Points:</span>
-                      <span className="font-medium">{contributorData?.pointsCompleted}</span>
+                      <span>Assigned Points:</span>
+                      <span className="font-medium text-blue-600">{contributorData?.pointsTotal}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Completed Points:</span>
+                      <span className="font-medium text-green-600">{contributorData?.pointsCompleted}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Completion Rate:</span>
+                      <span className="font-medium">
+                        {contributorData?.pointsTotal > 0 
+                          ? Math.round((contributorData.pointsCompleted / contributorData.pointsTotal) * 100)
+                          : 0}%
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Velocity:</span>
@@ -962,6 +1034,9 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   <div className="text-right">
                     <div className="font-bold text-green-700">
                       {contributor.pointsCompleted} pts
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      of {contributor.pointsTotal} assigned
                     </div>
                     <div className="text-sm text-slate-600">
                       {contributor.efficiency}% efficiency
@@ -1057,14 +1132,16 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     <TrendingDown size={16} className="text-red-500" />
                   )}
                   <span className="text-sm font-semibold">
-                    {velocityData.length >= 2
+                    {velocityData.length >= 2 && velocityData[velocityData.length - 2].velocity > 0
                       ? `${Math.round(
                           ((velocityData[velocityData.length - 1].velocity -
                             velocityData[velocityData.length - 2].velocity) /
                             velocityData[velocityData.length - 2].velocity) *
                             100
                         )}%`
-                      : "N/A"}
+                      : velocityData.length >= 2 && velocityData[velocityData.length - 1].velocity > 0
+                      ? "100%" // If previous was 0 and current > 0, show 100% improvement
+                      : "0%"} {/* Default to 0% if no meaningful data */}
                   </span>
                 </div>
               </div>
@@ -1081,11 +1158,13 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     width: `${Math.min(
                       100,
                       Math.abs(
-                        (velocityData.length >= 2
+                        (velocityData.length >= 2 && velocityData[velocityData.length - 2].velocity > 0
                           ? ((velocityData[velocityData.length - 1].velocity -
                               velocityData[velocityData.length - 2].velocity) /
                               velocityData[velocityData.length - 2].velocity) *
                             100
+                          : velocityData.length >= 2 && velocityData[velocityData.length - 1].velocity > 0
+                          ? 100 // If previous was 0 and current > 0, show 100%
                           : 0) * 2
                       )
                     )}%`,
@@ -1101,19 +1180,19 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   Team Efficiency
                 </span>
                 <span className="text-sm font-semibold">
-                  {sprintMetrics.teamEfficiency}%
+                  {isNaN(sprintMetrics.teamEfficiency) ? 0 : sprintMetrics.teamEfficiency}%
                 </span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full ${
-                    sprintMetrics.teamEfficiency >= 80
+                    (isNaN(sprintMetrics.teamEfficiency) ? 0 : sprintMetrics.teamEfficiency) >= 80
                       ? "bg-green-500"
-                      : sprintMetrics.teamEfficiency >= 60
+                      : (isNaN(sprintMetrics.teamEfficiency) ? 0 : sprintMetrics.teamEfficiency) >= 60
                       ? "bg-yellow-500"
                       : "bg-red-500"
                   }`}
-                  style={{ width: `${sprintMetrics.teamEfficiency}%` }}
+                  style={{ width: `${isNaN(sprintMetrics.teamEfficiency) ? 0 : sprintMetrics.teamEfficiency}%` }}
                 ></div>
               </div>
             </div>
@@ -1126,68 +1205,40 @@ const EnhancedAnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 </span>
                 <span className="text-sm font-semibold">
                   {contributorMetrics.length > 0
-                    ? Math.round(
-                        (1 -
-                          (Math.max(
-                            ...contributorMetrics.map((c) => c.pointsTotal)
-                          ) -
-                            Math.min(
-                              ...contributorMetrics.map((c) => c.pointsTotal)
-                            )) /
-                            Math.max(
-                              ...contributorMetrics.map((c) => c.pointsTotal)
-                            )) *
-                          100
-                      )
-                    : 0}
+                    ? (() => {
+                        const maxPoints = Math.max(...contributorMetrics.map((c) => c.pointsTotal));
+                        const minPoints = Math.min(...contributorMetrics.map((c) => c.pointsTotal));
+                        if (maxPoints === 0) return "100"; // Perfect balance when no work assigned
+                        const balance = Math.round((1 - (maxPoints - minPoints) / maxPoints) * 100);
+                        return isNaN(balance) ? "0" : balance.toString();
+                      })()
+                    : "0"}
                   %
                 </span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-2">
                 <div
                   className={`h-2 rounded-full ${
-                    contributorMetrics.length > 0 &&
-                    1 -
-                      (Math.max(
-                        ...contributorMetrics.map((c) => c.pointsTotal)
-                      ) -
-                        Math.min(
-                          ...contributorMetrics.map((c) => c.pointsTotal)
-                        )) /
-                        Math.max(
-                          ...contributorMetrics.map((c) => c.pointsTotal)
-                        ) >=
-                      0.8
-                      ? "bg-green-500"
-                      : contributorMetrics.length > 0 &&
-                        1 -
-                          (Math.max(
-                            ...contributorMetrics.map((c) => c.pointsTotal)
-                          ) -
-                            Math.min(
-                              ...contributorMetrics.map((c) => c.pointsTotal)
-                            )) /
-                            Math.max(
-                              ...contributorMetrics.map((c) => c.pointsTotal)
-                            ) >=
-                          0.6
-                      ? "bg-yellow-500"
+                    contributorMetrics.length > 0
+                      ? (() => {
+                          const maxPoints = Math.max(...contributorMetrics.map((c) => c.pointsTotal));
+                          const minPoints = Math.min(...contributorMetrics.map((c) => c.pointsTotal));
+                          if (maxPoints === 0) return "bg-green-500"; // Perfect balance when no work assigned
+                          const balance = 1 - (maxPoints - minPoints) / maxPoints;
+                          return balance >= 0.8 ? "bg-green-500" : balance >= 0.6 ? "bg-yellow-500" : "bg-red-500";
+                        })()
                       : "bg-red-500"
                   }`}
                   style={{
                     width: `${
                       contributorMetrics.length > 0
-                        ? (1 -
-                            (Math.max(
-                              ...contributorMetrics.map((c) => c.pointsTotal)
-                            ) -
-                              Math.min(
-                                ...contributorMetrics.map((c) => c.pointsTotal)
-                              )) /
-                              Math.max(
-                                ...contributorMetrics.map((c) => c.pointsTotal)
-                              )) *
-                          100
+                        ? (() => {
+                            const maxPoints = Math.max(...contributorMetrics.map((c) => c.pointsTotal));
+                            const minPoints = Math.min(...contributorMetrics.map((c) => c.pointsTotal));
+                            if (maxPoints === 0) return 100; // Perfect balance when no work assigned
+                            const balance = (1 - (maxPoints - minPoints) / maxPoints) * 100;
+                            return isNaN(balance) ? 0 : Math.max(0, Math.min(100, balance));
+                          })()
                         : 0
                     }%`,
                   }}

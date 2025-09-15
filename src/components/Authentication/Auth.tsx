@@ -112,7 +112,7 @@ const Auth: React.FC = () => {
       setSuccessMessage(`Verification email sent to ${email}. Please check your inbox and spam folder.`);
       setView('verify');
     } catch (err: any) {
-      console.error('Sign up error:', err);
+      // Error('Sign up error:', err);
     }
   };
 
@@ -126,7 +126,7 @@ const Auth: React.FC = () => {
       await dispatch(signInUser({ email: form.email, password: form.password })).unwrap();
       navigate('/boards');
     } catch (err: any) {
-      console.error('Sign in error:', err);
+      // Error('Sign in error:', err);
     }
   };
 
@@ -135,7 +135,7 @@ const Auth: React.FC = () => {
       await dispatch(signInWithGoogle()).unwrap();
       navigate('/boards');
     } catch (err: any) {
-      console.error('Google sign in error:', err);
+      // Error('Google sign in error:', err);
     }
   };
 
@@ -144,7 +144,7 @@ const Auth: React.FC = () => {
       await dispatch(signInWithGitHub()).unwrap();
       navigate('/boards');
     } catch (err: any) {
-      console.error('GitHub sign in error:', err);
+      // Error('GitHub sign in error:', err);
     }
   };
 
@@ -159,7 +159,7 @@ const Auth: React.FC = () => {
       setSuccessMessage(`Password reset email sent to ${form.email}. Please check your inbox and spam folder.`);
       setView('reset');
     } catch (err: any) {
-      console.error('Reset email error:', err);
+      // Error('Reset email error:', err);
     }
   };
 
@@ -184,7 +184,7 @@ const Auth: React.FC = () => {
       setView('signin');
       setForm({ ...form, password: '', confirmPassword: '', resetCode: '' });
     } catch (err: any) {
-      console.error('Reset password error:', err);
+      // Error('Reset password error:', err);
     }
   };
 
@@ -193,7 +193,7 @@ const Auth: React.FC = () => {
       await dispatch(sendVerificationEmail()).unwrap();
       setSuccessMessage(`Verification email resent to ${form.email}. Please check your inbox and spam folder.`);
     } catch (err: any) {
-      console.error('Resend verification error:', err);
+      // Error('Resend verification error:', err);
     }
   };
 
@@ -202,7 +202,7 @@ const Auth: React.FC = () => {
       await dispatch(checkEmailVerification()).unwrap();
       navigate('/boards');
     } catch (err: any) {
-      console.error('Check verification error:', err);
+      // Error('Check verification error:', err);
     }
   };
 
@@ -211,7 +211,7 @@ const Auth: React.FC = () => {
       await dispatch(signOutUser()).unwrap();
       navigate('/');
     } catch (err: any) {
-      console.error('Sign out error:', err);
+      // Error('Sign out error:', err);
     }
   };
 

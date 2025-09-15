@@ -267,7 +267,7 @@ const CreateBoardForm: React.FC<CreateBoardFormProps> = ({ onSubmit, onCancel, l
       },
       collaborators: collaboratorsWithRoles,
       statuses: ['todo', 'inprogress', 'done'],
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
       imageFile: imageFile || undefined,
     };
 

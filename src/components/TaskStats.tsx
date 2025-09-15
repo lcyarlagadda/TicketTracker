@@ -10,8 +10,9 @@ interface TaskStatsProps {
 const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
   const { user } = useAppSelector(state => state.auth);
 
+  // Set today to start of day for consistent date comparison
   const today = new Date();
-  today.setHours(23, 59, 59, 999);
+  today.setHours(0, 0, 0, 0);
 
   // Filter out child tasks (subtasks) - only count main/parent tasks
   const mainTasks = tasks.filter(task => !task.parentTaskId);
@@ -21,13 +22,14 @@ const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
     t.priority === 'High' && t.status !== 'done' && t.status !== 'completed' && t.assignedTo?.email === user?.email
   ).length;
 
-  const overdueTasks = mainTasks.filter(t =>
-    t.dueDate &&
-    new Date(t.dueDate) < today &&
-    t.status !== 'done' &&
-    t.status !== 'completed' &&
-   t.assignedTo?.email === user?.email
-  ).length;
+  const overdueTasks = mainTasks.filter(t => {
+    if (!t.dueDate || t.status === 'done' || t.status === 'completed' || t.assignedTo?.email !== user?.email) {
+      return false;
+    }
+    const taskDate = new Date(t.dueDate);
+    taskDate.setHours(0, 0, 0, 0); // Set to start of day for consistent comparison
+    return taskDate < today;
+  }).length;
 
   const upcomingTasks = mainTasks.filter(t => {
     if (!t.dueDate || t.status === 'done' || t.status === 'completed' || t.assignedTo?.email !== user?.email) return false;
@@ -45,62 +47,61 @@ const TaskStats: React.FC<TaskStatsProps> = ({ tasks }) => {
   ).length;
 
   return (
-    <div className="w-56">
-      
-      <div className="space-y-3">
+    <div className="w-full max-w-sm mx-auto laptop:mx-0">
+      <div className="space-y-2">
 
         {/* Priority Tasks */}
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">{priorityTasks}</h3>
-              <p className="text-red-100 text-xs font-medium">High Priority Tasks</p>
+              <h3 className="text-sm tablet:text-base font-bold">{priorityTasks}</h3>
+              <p className="text-red-100 text-xs tablet:text-sm font-medium">High Priority</p>
             </div>
-            <div className="text-base opacity-60">🔥</div>
+            <div className="text-sm tablet:text-base opacity-60">🔥</div>
           </div>
         </div>
 
         {/* Overdue Tasks */}
-        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">{overdueTasks}</h3>
-              <p className="text-orange-100 text-xs font-medium">Overdue Tasks</p>
+              <h3 className="text-sm tablet:text-base font-bold">{overdueTasks}</h3>
+              <p className="text-orange-100 text-xs tablet:text-sm font-medium">Overdue</p>
             </div>
-            <div className="text-base opacity-60">⚠️</div>
+            <div className="text-sm tablet:text-base opacity-60">⚠️</div>
           </div>
         </div>
 
         {/* Upcoming Tasks */}
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">{upcomingTasks}</h3>
-              <p className="text-blue-100 text-xs font-medium">Due This Week</p>
+              <h3 className="text-sm tablet:text-base font-bold">{upcomingTasks}</h3>
+              <p className="text-blue-100 text-xs tablet:text-sm font-medium">This Week</p>
             </div>
-            <div className="text-base opacity-60">📅</div>
+            <div className="text-sm tablet:text-base opacity-60">📅</div>
           </div>
         </div>
 
         {/* Pending Tasks */}
-        <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg p-2 text-white">
+        <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">{pendingTasks}</h3>
-              <p className="text-yellow-100 text-xs font-medium">Pending Tasks</p>
+              <h3 className="text-sm tablet:text-base font-bold">{pendingTasks}</h3>
+              <p className="text-yellow-100 text-xs tablet:text-sm font-medium">Pending</p>
             </div>
-            <div className="text-base opacity-60">⏳</div>
+            <div className="text-sm tablet:text-base opacity-60">⏳</div>
           </div>
         </div>
 
-        {/* Pending Tasks */}
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-2 text-white">
+        {/* Completed Tasks */}
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-3 tablet:p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">{completedTasks}</h3>
-              <p className="text-green-100 text-xs font-medium">Completed Tasks</p>
+              <h3 className="text-sm tablet:text-base font-bold">{completedTasks}</h3>
+              <p className="text-green-100 text-xs tablet:text-sm font-medium">Completed</p>
             </div>
-            <div className="text-base opacity-60">✅</div>
+            <div className="text-sm tablet:text-base opacity-60">✅</div>
           </div>
         </div>
 
