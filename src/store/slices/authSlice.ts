@@ -8,7 +8,6 @@ import {
   updateProfile,
   onAuthStateChanged,
   OAuthProvider,
-  GithubAuthProvider,
   sendEmailVerification,
   sendPasswordResetEmail,
   confirmPasswordReset,
@@ -79,20 +78,6 @@ export const signInWithMicrosoft = createAsyncThunk(
   'auth/signInWithMicrosoft',
   async () => {
     const provider = new OAuthProvider('microsoft.com');
-    const result = await signInWithPopup(auth, provider);
-    return {
-      uid: result.user.uid,
-      email: result.user.email!,
-      displayName: result.user.displayName,
-      emailVerified: result.user.emailVerified,
-    };
-  }
-);
-
-export const signInWithGitHub = createAsyncThunk(
-  'auth/signInWithGitHub',
-  async () => {
-    const provider = new GithubAuthProvider();
     const result = await signInWithPopup(auth, provider);
     return {
       uid: result.user.uid,
@@ -229,21 +214,6 @@ export const authSlice = createSlice({
       .addCase(signInWithGoogle.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Google sign in failed';
-      })
-      
-      // GitHub Sign In
-      .addCase(signInWithGitHub.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(signInWithGitHub.fulfilled, (state, action) => {
-        state.loading = false;
-        state.user = action.payload;
-        state.error = null;
-      })
-      .addCase(signInWithGitHub.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message || 'GitHub sign in failed';
       })
       
       // Send Verification Email

@@ -20,7 +20,6 @@ import {
   signInUser, 
   signUpUser, 
   signInWithGoogle, 
-  signInWithGitHub,
   signOut as signOutUser,
   clearError,
   sendVerificationEmail,
@@ -136,15 +135,6 @@ const Auth: React.FC = () => {
       navigate('/boards');
     } catch (err: any) {
       // Error('Google sign in error:', err);
-    }
-  };
-
-  const githubSignIn = async () => {
-    try {
-      await dispatch(signInWithGitHub()).unwrap();
-      navigate('/boards');
-    } catch (err: any) {
-      // Error('GitHub sign in error:', err);
     }
   };
 
@@ -369,12 +359,8 @@ const Auth: React.FC = () => {
                 <div className="flex-1 border-t border-gray-300"></div>
               </div>
 
-              <Button onClick={googleSignIn} loading={loading} variant="outline" className="mb-3">
+              <Button onClick={googleSignIn} loading={loading} variant="outline" className="mb-4">
                 Continue with Google
-              </Button>
-
-              <Button onClick={githubSignIn} loading={loading} variant="outline" className="mb-4">
-                Continue with GitHub
               </Button>
 
               <p className="text-center text-sm text-gray-600">
